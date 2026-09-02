@@ -1,0 +1,54 @@
+# ============================================
+# Phase 1: Core Flask Application
+# ============================================
+Flask==3.0.3
+Flask-WTF==1.2.1
+Flask-Limiter==3.5.0
+python-dotenv==1.0.1
+Werkzeug==3.0.3
+
+# ============================================
+# Phase 2: Database (PostgreSQL + PostGIS)
+# ============================================
+SQLAlchemy==2.0.30
+Flask-SQLAlchemy==3.1.1
+psycopg2-binary==2.9.9
+alembic==1.13.1
+geoalchemy2==0.14.7
+
+# ============================================
+# Phase 3: Authentication & Authorization
+# ============================================
+Flask-Login==0.6.3
+bcrypt==4.1.2
+email-validator==2.1.0
+
+# ============================================
+# Phase 4: Frontend & File Uploads
+# ============================================
+Flask-Uploads==0.2.1
+Pillow==10.3.0
+python-magic==0.4.27
+
+# ============================================
+# Phase 5: AI/ML (Pothole Detection)
+# ============================================
+opencv-python==4.9.0.80
+torch==2.2.2
+torchvision==0.17.2
+ultralytics==8.1.47
+numpy==1.26.4
+
+# ============================================
+# Phase 6: API & Data Validation
+# ============================================
+Flask-RESTful==0.3.10
+marshmallow==3.21.1
+Flask-Marshmallow==1.2.1
+
+# ============================================
+# Phase 7: Production & Utilities
+# ============================================
+gunicorn==22.0.0
+requests==2.31.0
+python-json-logger==2.0.7

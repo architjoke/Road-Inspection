@@ -1,24 +1,13 @@
-from flask import Flask
-from flask_wtf import CSRFProtect
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from flask import Flask, render_template
 from dotenv import load_dotenv
 from pathlib import Path
 import logging
-import os
 
 from app.config import Config
-from app.extensions import db
+from app.extensions import csrf, db, limiter, login_manager
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
-
-csrf = CSRFProtect()
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["100 per hour", "20 per minute"],
-    storage_uri="memory://",
-)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +21,7 @@ def create_app():
 
     csrf.init_app(app)
     limiter.init_app(app)
+    login_manager.init_app(app)
 
     if app.config.get('SQLALCHEMY_DATABASE_URI'):
         db.init_app(app)
@@ -44,7 +34,14 @@ def create_app():
             except Exception as exc:
                 logger.warning('Model reflection deferred until database is reachable: %s', exc)
 
+    from app.auth import auth_bp
     from app.routes import main_bp
+
+    app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
+
+    @app.errorhandler(403)
+    def forbidden(_error):
+        return render_template('403.html'), 403
 
     return app

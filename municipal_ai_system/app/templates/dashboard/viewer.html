@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Viewer Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Read-only monitoring</p>
+        <h1>Viewer Dashboard</h1>
+        <p class="text-muted mb-0">
+            View inspections, road-condition maps, and reports with read-only access.
+        </p>
+    </div>
+
+    <a class="btn btn-primary" href="{{ url_for('protected.map_view') }}">
+        <i class="fa-solid fa-map me-2"></i>
+        Open GIS Map
+    </a>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-sm-6 col-xl-4">
+        <div class="stat-card stat-info">
+            <span>Visible Inspections</span>
+            <strong>—</strong>
+            <small>Read-only inspection records</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+        <div class="stat-card stat-warning">
+            <span>Open Road Issues</span>
+            <strong>—</strong>
+            <small>Current unresolved defects</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+        <div class="stat-card stat-success">
+            <span>Available Reports</span>
+            <strong>—</strong>
+            <small>Reports you can view or download</small>
+        </div>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div>
+            <h2>Read-Only Access</h2>
+            <p>
+                Viewer accounts can see information but cannot create inspections,
+                assign repairs, modify users, or change system settings.
+            </p>
+        </div>
+    </div>
+
+    <div class="quick-actions">
+        <a class="quick-action" href="{{ url_for('protected.inspections') }}">
+            <i class="fa-solid fa-clipboard-list"></i>
+            View Inspections
+        </a>
+
+        <a class="quick-action" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map-location-dot"></i>
+            View GIS Map
+        </a>
+
+        <a class="quick-action" href="{{ url_for('protected.reports') }}">
+            <i class="fa-solid fa-file-lines"></i>
+            View Reports
+        </a>
+    </div>
+</div>
+{% endblock %}

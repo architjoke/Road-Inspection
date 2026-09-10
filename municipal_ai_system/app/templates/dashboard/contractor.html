@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Contractor Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Repair execution</p>
+        <h1>Contractor Dashboard</h1>
+        <p class="text-muted mb-0">
+            View assigned repair jobs, update progress, and upload after-repair evidence.
+        </p>
+    </div>
+
+    <a class="btn btn-primary" href="{{ url_for('protected.repairs') }}">
+        <i class="fa-solid fa-screwdriver-wrench me-2"></i>
+        My Repair Tasks
+    </a>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-primary">
+            <span>Assigned Tasks</span>
+            <strong>—</strong>
+            <small>Repair tasks assigned to you</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-warning">
+            <span>In Progress</span>
+            <strong>—</strong>
+            <small>Work currently underway</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-success">
+            <span>Completed</span>
+            <strong>—</strong>
+            <small>Submitted repair jobs</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-info">
+            <span>Evidence Due</span>
+            <strong>—</strong>
+            <small>After-repair media required</small>
+        </div>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div>
+            <h2>Assigned Repair Jobs</h2>
+            <p>Only tasks assigned to this contractor will appear here.</p>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Repair ID</th>
+                    <th>Location</th>
+                    <th>Damage Type</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                        Repair assignment functionality will be added in later phases.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

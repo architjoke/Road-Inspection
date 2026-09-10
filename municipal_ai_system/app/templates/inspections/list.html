@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Inspections{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Municipal inspection records</p>
+        <h1>Inspections</h1>
+        <p class="text-muted mb-0">
+            View inspections available to your role.
+        </p>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Inspection Code</th>
+                    <th>Road / Location</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for inspection in inspections %}
+                <tr>
+                    <td class="fw-semibold">
+                        {{ inspection.inspection_code }}
+                    </td>
+
+                    <td>
+                        {{ inspection.location_name or "Not provided" }}
+                    </td>
+
+                    <td>
+                        {{ inspection.inspection_date.strftime("%d %b %Y, %I:%M %p") }}
+                    </td>
+
+                    <td>
+                        <span class="badge text-bg-warning">
+                            {{ inspection.status.replace("_", " ").title() }}
+                        </span>
+                    </td>
+
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary"
+                            href="{{ url_for('inspections.detail', inspection_id=inspection.id) }}">
+                            View
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-5">
+                        No inspections are available yet.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

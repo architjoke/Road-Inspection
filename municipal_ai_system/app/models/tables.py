@@ -29,3 +29,13 @@ SPATIAL_TABLES = {
     'inspection_media',
     'detections',
 }
+
+# Mapped as declarative models; reflection covers remaining DBeaver tables.
+EXPLICIT_ORM_TABLES = {
+    'roles',
+    'municipalities',
+    'wards',
+    'users',
+    'inspections',
+    'inspection_media',
+}

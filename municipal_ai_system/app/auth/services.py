@@ -41,9 +41,14 @@ def _record_failed_user_login(user_row, now):
 
 def _clear_user_lockout(user_row, now):
     user_row.failed_login_attempts = 0
-    user_row.locked_until = None
-    user_row.last_login = now
-    user_row.updated_at = now
+    if hasattr(user_row, "locked_until"):
+        user_row.locked_until = None
+    if hasattr(user_row, "last_login"):
+        user_row.last_login = now
+    if hasattr(user_row, "last_login_at"):
+        user_row.last_login_at = now
+    if hasattr(user_row, "updated_at"):
+        user_row.updated_at = now
     db.session.commit()
 
 

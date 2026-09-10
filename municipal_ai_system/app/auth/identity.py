@@ -2,7 +2,7 @@ import logging
 
 from flask_login import UserMixin
 
-from app.auth.constants import KIND_SUPER_ADMIN, KIND_USER, ROLE_SUPER_ADMIN, canonical_role, normalize_role
+from app.auth.constants import KIND_SUPER_ADMIN, KIND_USER, ROLE_ADMINISTRATOR, ROLE_CONTRACTOR, ROLE_FIELD_OFFICER, ROLE_FIELD_WORKER, ROLE_SUPER_ADMIN, ROLE_VIEWER, canonical_role, normalize_role
 from app.extensions import db, login_manager
 from app.models import get_model
 
@@ -21,6 +21,7 @@ class UserIdentity(UserMixin):
         role_name,
         municipality_id=None,
         ward_id=None,
+        role_id=None,
         is_active=True,
         municipality_ids=None,
         permissions=None,
@@ -33,9 +34,34 @@ class UserIdentity(UserMixin):
         self.role_name = role_name
         self.municipality_id = municipality_id
         self.ward_id = ward_id
+        self.role_id = role_id
         self._is_active = bool(is_active) if is_active is not None else True
         self.municipality_ids = list(municipality_ids or [])
         self.permissions = permissions or {}
+
+    @property
+    def id(self):
+        return self.pk
+
+    @property
+    def display_role_name(self):
+        raw = (self.role_name or "No role").strip()
+        return raw.replace("_", " ").title()
+
+    @property
+    def dashboard_role_key(self):
+        canon = canonical_role(self.role_name)
+        mapping = {
+            ROLE_SUPER_ADMIN: "super_admin",
+            ROLE_ADMINISTRATOR: "municipal_admin",
+            ROLE_FIELD_OFFICER: "field_officer",
+            ROLE_FIELD_WORKER: "field_worker",
+            ROLE_CONTRACTOR: "contractor",
+            ROLE_VIEWER: "viewer",
+        }
+        if canon in mapping:
+            return mapping[canon]
+        return (self.role_name or "").strip().lower().replace(" ", "_")
 
     def get_id(self):
         prefix = 'sa' if self.kind == KIND_SUPER_ADMIN else 'user'
@@ -52,14 +78,33 @@ class UserIdentity(UserMixin):
         return canonical_role(self.role_name) == ROLE_SUPER_ADMIN
 
     def has_role(self, *role_names):
-        if self.is_super_admin:
-            return False
-        actual = normalize_role(canonical_role(self.role_name) or self.role_name)
         allowed = {
             normalize_role(canonical_role(name) or name)
             for name in role_names
         }
+        allowed.discard('')
+        if self.is_super_admin:
+            return normalize_role(ROLE_SUPER_ADMIN) in allowed
+        actual = normalize_role(canonical_role(self.role_name) or self.role_name)
         return bool(actual) and actual in allowed
+
+    def is_municipal_admin(self):
+        return self.has_role(ROLE_ADMINISTRATOR, "municipal_admin")
+
+    def is_admin(self):
+        return self.is_municipal_admin()
+
+    def is_field_officer(self):
+        return self.has_role(ROLE_FIELD_OFFICER, "field_officer")
+
+    def is_field_worker(self):
+        return self.has_role(ROLE_FIELD_WORKER, "field_worker")
+
+    def is_contractor(self):
+        return self.has_role(ROLE_CONTRACTOR, "contractor")
+
+    def is_viewer(self):
+        return self.has_role(ROLE_VIEWER, "viewer")
 
 
 def _role_for_user(user_row):
@@ -69,7 +114,8 @@ def _role_for_user(user_row):
     role = db.session.get(Role, user_row.role_id)
     if role is None:
         return None, {}
-    return role.role_name, role.permissions or {}
+    role_name = getattr(role, "role_name", None) or getattr(role, "name", None)
+    return role_name, role.permissions or {}
 
 
 def identity_from_user(user_row):
@@ -78,15 +124,16 @@ def identity_from_user(user_row):
     role_name, permissions = _role_for_user(user_row)
     return UserIdentity(
         kind=KIND_USER,
-        pk=user_row.user_id,
+        pk=getattr(user_row, "user_id", None) or getattr(user_row, "id", None),
         username=user_row.username,
         email=user_row.email,
         full_name=user_row.full_name,
-        role_name=role_name,
-        municipality_id=user_row.municipality_id,
-        ward_id=user_row.ward_id,
+        role_name=role_name or getattr(user_row, "role_name", None),
+        municipality_id=getattr(user_row, "municipality_id", None),
+        ward_id=getattr(user_row, "ward_id", None),
+        role_id=getattr(user_row, "role_id", None),
         is_active=user_row.is_active,
-        municipality_ids=[user_row.municipality_id] if user_row.municipality_id else [],
+        municipality_ids=[user_row.municipality_id] if getattr(user_row, "municipality_id", None) else [],
         permissions=permissions,
     )
 

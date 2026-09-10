@@ -4,12 +4,22 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+
+APP_DIR = Path(__file__).resolve().parent
+SYSTEM_DIR = APP_DIR.parent
+PROJECT_ROOT = SYSTEM_DIR.parent
+
+load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(SYSTEM_DIR / ".env")
 
 
 class Config:
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-key')
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
+    SECRET_KEY = os.getenv(
+        "SECRET_KEY",
+        "development-only-secret-change-before-production"
+    )
+
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
@@ -26,3 +36,8 @@ class Config:
 
     AUTH_MAX_FAILED_ATTEMPTS = int(os.getenv('AUTH_MAX_FAILED_ATTEMPTS', '5'))
     AUTH_LOCKOUT_MINUTES = int(os.getenv('AUTH_LOCKOUT_MINUTES', '15'))
+
+    MAX_CONTENT_LENGTH = 100 * 1024 * 1024
+    ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+    ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov"}
+    TEMP_UPLOAD_ROOT = APP_DIR / "instance" / "temp" / "inspections"

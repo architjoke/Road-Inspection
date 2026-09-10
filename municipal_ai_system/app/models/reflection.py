@@ -5,7 +5,7 @@ from geoalchemy2 import Geometry
 from sqlalchemy import Table, inspect, text, event
 
 from app.extensions import db
-from app.models.tables import SPATIAL_TABLES, TABLE_NAMES
+from app.models.tables import EXPLICIT_ORM_TABLES, SPATIAL_TABLES, TABLE_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +73,14 @@ def reflect_models(force: bool = False) -> dict[str, type]:
 
     _configure_postgis_reflection()
 
+    reflect_only = [
+        name for name in TABLE_NAMES if name not in EXPLICIT_ORM_TABLES
+    ]
+
     db.metadata.reflect(
         bind=db.engine,
         schema='public',
-        only=TABLE_NAMES,
+        only=reflect_only,
         extend_existing=True,
         views=False,
     )

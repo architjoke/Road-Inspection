@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Phase 3 access test</p>
+        <h1>{{ page_title }}</h1>
+        <p class="text-muted mb-0">
+            {{ message }}
+        </p>
+    </div>
+
+    <a class="btn btn-outline-primary" href="{{ url_for('dashboard.index') }}">
+        <i class="fa-solid fa-arrow-left me-2"></i>
+        Back to Dashboard
+    </a>
+</div>
+
+<div class="content-card">
+    <div class="empty-state">
+        <i class="fa-solid fa-shield-halved"></i>
+        <h2>Access Granted</h2>
+        <p>
+            You have successfully opened a route that is permitted for your role.
+        </p>
+    </div>
+</div>
+{% endblock %}

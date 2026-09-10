@@ -1,0 +1,11 @@
+from app.routes.auth import auth_bp
+from app.routes.dashboard import dashboard_bp
+from app.routes.inspections import inspections_bp
+from app.routes.protected import protected_bp
+
+__all__ = [
+    "auth_bp",
+    "dashboard_bp",
+    "inspections_bp",
+    "protected_bp",
+]

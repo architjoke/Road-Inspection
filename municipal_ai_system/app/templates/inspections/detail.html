@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}{{ inspection.inspection_code }}{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inspection.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Inspection detail</p>
+        <h1>{{ inspection.inspection_code }}</h1>
+        <p class="text-muted mb-0">
+            Submitted on
+            {{ inspection.inspection_date.strftime("%d %B %Y, %I:%M %p") }}
+        </p>
+    </div>
+
+    {% if current_user.is_field_worker() %}
+    <a class="btn btn-outline-primary" href="{{ url_for('inspections.my_inspections') }}">
+        <i class="fa-solid fa-arrow-left me-2"></i>
+        My Inspections
+    </a>
+    {% else %}
+    <a class="btn btn-outline-primary" href="{{ url_for('inspections.list_all') }}">
+        <i class="fa-solid fa-arrow-left me-2"></i>
+        Inspections
+    </a>
+    {% endif %}
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="content-card">
+            <div class="content-card-header">
+                <div>
+                    <h2>Uploaded Media</h2>
+                    <p>Original field evidence submitted for this inspection.</p>
+                </div>
+            </div>
+
+            <div class="p-4">
+                {% for media in inspection.media_items %}
+                <div class="media-detail-card">
+                    <div>
+                        <div class="fw-semibold">
+                            {{ media.file_name }}
+                        </div>
+
+                        <small class="text-muted">
+                            {{ media.media_type.title() }}
+
+                            {% if media.file_size_bytes %}
+                            ·
+                            {{ "%.2f"|format(media.file_size_bytes / 1024 / 1024) }}
+                            MB
+                            {% endif %}
+                        </small>
+                    </div>
+
+                    <a class="btn btn-outline-primary btn-sm"
+                        href="{{ url_for('inspections.view_media', media_id=media.id) }}" target="_blank">
+                        <i class="fa-solid fa-eye me-1"></i>
+                        View Media
+                    </a>
+                </div>
+
+                {% if media.media_type == "image" %}
+                <img class="inspection-image-preview mt-3"
+                    src="{{ url_for('inspections.view_media', media_id=media.id) }}"
+                    alt="Inspection image {{ media.file_name }}">
+                {% endif %}
+                {% else %}
+                <p class="text-muted mb-0">
+                    No media record is attached to this inspection.
+                </p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="content-card mt-4">
+            <div class="content-card-header">
+                <div>
+                    <h2>AI Processing</h2>
+                    <p>This feature begins in the next implementation phase.</p>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <div class="phase-status-row">
+                    <span class="phase-status-check">
+                        <i class="fa-solid fa-check"></i>
+                    </span>
+
+                    Inspection record created
+                </div>
+
+                <div class="phase-status-row">
+                    <span class="phase-status-check">
+                        <i class="fa-solid fa-check"></i>
+                    </span>
+
+                    GPS location captured
+                </div>
+
+                <div class="phase-status-row">
+                    <span class="phase-status-check">
+                        <i class="fa-solid fa-check"></i>
+                    </span>
+
+                    Media saved for processing
+                </div>
+
+                <div class="phase-status-row text-muted">
+                    <span class="phase-status-wait">
+                        <i class="fa-solid fa-hourglass-half"></i>
+                    </span>
+
+                    YOLO AI analysis will start in a later phase
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="content-card">
+            <div class="content-card-header">
+                <div>
+                    <h2>Inspection Status</h2>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <span class="badge text-bg-warning fs-6">
+                    {{ inspection.status.replace("_", " ").title() }}
+                </span>
+            </div>
+        </div>
+
+        <div class="content-card mt-4">
+            <div class="content-card-header">
+                <div>
+                    <h2>Road Location</h2>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <dl class="inspection-details-list">
+                    <div>
+                        <dt>Road / Location</dt>
+                        <dd>
+                            {{ inspection.location_name or "Not provided" }}
+                        </dd>
+                    </div>
+
+                    <div>
+                        <dt>Latitude</dt>
+                        <dd>
+                            {{ inspection.location_latitude or "Not captured" }}
+                        </dd>
+                    </div>
+
+                    <div>
+                        <dt>Longitude</dt>
+                        <dd>
+                            {{ inspection.location_longitude or "Not captured" }}
+                        </dd>
+                    </div>
+
+                    <div>
+                        <dt>Municipality ID</dt>
+                        <dd>{{ inspection.municipality_id }}</dd>
+                    </div>
+
+                    <div>
+                        <dt>Inspection Type</dt>
+                        <dd>
+                            {{ inspection.inspection_type.replace("_", " ").title() }}
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <div class="content-card mt-4">
+            <div class="content-card-header">
+                <div>
+                    <h2>Field Notes</h2>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <p class="mb-0">
+                    {{ inspection.notes or "No notes were provided." }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

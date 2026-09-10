@@ -1,0 +1,195 @@
+<aside class="app-sidebar">
+    <div class="sidebar-role">
+        <span class="sidebar-role-label">Signed in as</span>
+        <strong>{{ current_user.display_role_name }}</strong>
+    </div>
+
+    <nav class="nav flex-column sidebar-nav">
+        <a class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}"
+            href="{{ url_for('dashboard.index') }}">
+            <i class="fa-solid fa-house"></i>
+            Dashboard
+        </a>
+
+        {% if current_user.role_name == "super_admin" %}
+        <a class="nav-link" href="{{ url_for('protected.users') }}">
+            <i class="fa-solid fa-users"></i>
+            User Management
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.municipalities') }}">
+            <i class="fa-solid fa-building-columns"></i>
+            Municipalities
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.wards') }}">
+            <i class="fa-solid fa-map-location-dot"></i>
+            Wards
+        </a>
+
+        <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
+            <i class="fa-solid fa-clipboard-check"></i>
+            Inspections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.detections') }}">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            AI Detections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-screwdriver-wrench"></i>
+            Repairs
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.reports') }}">
+            <i class="fa-solid fa-file-lines"></i>
+            Reports
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.settings') }}">
+            <i class="fa-solid fa-gear"></i>
+            System Settings
+        </a>
+
+        {% elif current_user.role_name == "municipal_admin" %}
+        <a class="nav-link" href="{{ url_for('protected.users') }}">
+            <i class="fa-solid fa-users"></i>
+            Users
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.wards') }}">
+            <i class="fa-solid fa-map-location-dot"></i>
+            Wards
+        </a>
+
+        <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
+            <i class="fa-solid fa-clipboard-check"></i>
+            Inspections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.detections') }}">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            AI Results
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-screwdriver-wrench"></i>
+            Tasks & Repairs
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.reports') }}">
+            <i class="fa-solid fa-file-lines"></i>
+            Reports
+        </a>
+
+        {% elif current_user.role_name == "field_officer" %}
+        <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
+            <i class="fa-solid fa-clipboard-check"></i>
+            Inspections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.detections') }}">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            AI Detections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.detections') }}">
+            <i class="fa-solid fa-circle-check"></i>
+            Verification
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-screwdriver-wrench"></i>
+            Repairs
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.reports') }}">
+            <i class="fa-solid fa-file-lines"></i>
+            Reports
+        </a>
+
+        {% elif current_user.role_name == "field_worker" %}
+        <a class="nav-link" href="{{ url_for('inspections.new') }}">
+            <i class="fa-solid fa-circle-plus"></i>
+            New Inspection
+        </a>
+
+        <a class="nav-link" href="{{ url_for('inspections.my_inspections') }}">
+            <i class="fa-solid fa-clipboard-list"></i>
+            My Inspections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('inspections.my_inspections') }}">
+            <i class="fa-solid fa-folder-open"></i>
+            Uploaded Media
+        </a>
+
+        {% elif current_user.role_name == "contractor" %}
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-list-check"></i>
+            My Repair Tasks
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-location-dot"></i>
+            Repair Locations
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            Upload After-Repair Evidence
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            Repair History
+        </a>
+
+        {% elif current_user.role_name == "viewer" %}
+        <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
+            <i class="fa-solid fa-clipboard-check"></i>
+            Inspections
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
+        </a>
+
+        <a class="nav-link" href="{{ url_for('protected.reports') }}">
+            <i class="fa-solid fa-file-lines"></i>
+            Reports
+        </a>
+        {% endif %}
+
+        <hr class="sidebar-divider">
+
+        <a class="nav-link" href="{{ url_for('protected.profile') }}">
+            <i class="fa-solid fa-user"></i>
+            Profile
+        </a>
+
+        <form method="POST" action="{{ url_for('auth.logout') }}" class="sidebar-logout-form">
+            <button class="nav-link sidebar-logout-button" type="submit">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Logout
+            </button>
+        </form>
+    </nav>
+</aside>

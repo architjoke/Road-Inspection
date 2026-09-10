@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}New Inspection{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inspection.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Field data collection</p>
+        <h1>New Road Inspection</h1>
+        <p class="text-muted mb-0">
+            Upload one road image/video and capture your current GPS location.
+        </p>
+    </div>
+
+    <a class="btn btn-outline-primary" href="{{ url_for('inspections.my_inspections') }}">
+        <i class="fa-solid fa-list me-2"></i>
+        My Inspections
+    </a>
+</div>
+
+<form id="inspection-form" method="POST" action="{{ url_for('inspections.new') }}" enctype="multipart/form-data"
+    novalidate>
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div>
+                        <h2>Road Information</h2>
+                        <p>Describe the road location for this inspection.</p>
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    <div class="mb-3">
+                        <label for="location_name" class="form-label">
+                            Road / Street / Location Name
+                            <span class="text-danger">*</span>
+                        </label>
+
+                        <input type="text" id="location_name" name="location_name" class="form-control"
+                            placeholder="Example: Main Road near Bus Stand" maxlength="255" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="weather_conditions" class="form-label">
+                            Weather Conditions
+                        </label>
+
+                        <select id="weather_conditions" name="weather_conditions" class="form-select">
+                            <option value="">Select weather (optional)</option>
+                            <option value="clear">Clear</option>
+                            <option value="cloudy">Cloudy</option>
+                            <option value="rainy">Rainy</option>
+                            <option value="foggy">Foggy</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="lighting_conditions" class="form-label">
+                            Lighting Conditions
+                        </label>
+
+                        <select id="lighting_conditions" name="lighting_conditions" class="form-select">
+                            <option value="">Select lighting (optional)</option>
+                            <option value="daylight">Daylight</option>
+                            <option value="low_light">Low light</option>
+                            <option value="night">Night</option>
+                            <option value="artificial_light">Artificial light</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-0">
+                        <label for="notes" class="form-label">
+                            Notes
+                        </label>
+
+                        <textarea id="notes" name="notes" class="form-control" rows="4"
+                            placeholder="Example: Large pothole near the left lane."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-card mt-4">
+                <div class="content-card-header">
+                    <div>
+                        <h2>Road Image or Video</h2>
+                        <p>Allowed: JPG, JPEG, PNG, MP4, MOV. Maximum size: 100 MB.</p>
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    <label for="media_file" class="upload-drop-zone" id="upload-drop-zone">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <span class="upload-title">Drag and drop a file here</span>
+                        <span class="upload-subtitle">or click to browse</span>
+
+                        <input type="file" id="media_file" name="media_file"
+                            accept=".jpg,.jpeg,.png,.mp4,.mov,image/jpeg,image/png,video/mp4,video/quicktime" required>
+                    </label>
+
+                    <div id="selected-file-info" class="selected-file-info d-none">
+                        <i class="fa-solid fa-file me-2"></i>
+                        <span id="selected-file-name"></span>
+                        <span id="selected-file-size" class="text-muted ms-2"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div>
+                        <h2>Current Location</h2>
+                        <p>Use browser location at the moment of inspection submission.</p>
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    <div class="gps-status-card" id="gps-status-card">
+                        <div class="gps-status-icon">
+                            <i class="fa-solid fa-location-dot"></i>
+                        </div>
+
+                        <div>
+                            <strong id="gps-status-title">Location not captured</strong>
+
+                            <p id="gps-status-message">
+                                Click the button below and allow location permission.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-outline-primary w-100 mt-3" id="capture-location-button">
+                        <i class="fa-solid fa-location-crosshairs me-2"></i>
+                        Capture Current Location
+                    </button>
+
+                    <div class="gps-values mt-4">
+                        <div class="gps-value-row">
+                            <span>Latitude</span>
+                            <strong id="latitude-display">—</strong>
+                        </div>
+
+                        <div class="gps-value-row">
+                            <span>Longitude</span>
+                            <strong id="longitude-display">—</strong>
+                        </div>
+
+                        <div class="gps-value-row">
+                            <span>GPS Accuracy</span>
+                            <strong id="accuracy-display">—</strong>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="location_latitude" name="location_latitude">
+
+                    <input type="hidden" id="location_longitude" name="location_longitude">
+
+                    <input type="hidden" id="gps_accuracy_meters" name="gps_accuracy_meters">
+
+                    <div class="alert alert-info mt-4 mb-0">
+                        <small>
+                            <i class="fa-solid fa-circle-info me-1"></i>
+                            GPS is required for this Phase 4 inspection workflow.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-grid mt-4">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-inspection-button">
+                    <i class="fa-solid fa-paper-plane me-2"></i>
+                    Submit Inspection
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ url_for('static', filename='js/geolocation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inspection_upload.js') }}"></script>
+{% endblock %}

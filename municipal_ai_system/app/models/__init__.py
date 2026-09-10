@@ -1,16 +1,15 @@
-from app.models.reflection import (
-    ModelRegistry,
-    get_model,
-    get_reflection_status,
-    reflect_models,
-)
-from app.models.tables import SPATIAL_TABLES, TABLE_NAMES
+from app.models.role import Role
+from app.models.user import User
+from app.models.municipality import Municipality
+from app.models.ward import Ward
+from app.models.inspection import Inspection
+from app.models.inspection_media import InspectionMedia
 
 __all__ = [
-    'ModelRegistry',
-    'TABLE_NAMES',
-    'SPATIAL_TABLES',
-    'get_model',
-    'get_reflection_status',
-    'reflect_models',
+    "Role",
+    "User",
+    "Municipality",
+    "Ward",
+    "Inspection",
+    "InspectionMedia",
 ]

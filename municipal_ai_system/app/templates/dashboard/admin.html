@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Municipal Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Municipal operations</p>
+        <h1>Municipal Admin Dashboard</h1>
+        <p class="text-muted mb-0">
+            Manage users, inspection operations, repair work, and municipality reports.
+        </p>
+    </div>
+
+    <a class="btn btn-primary" href="{{ url_for('protected.users') }}">
+        <i class="fa-solid fa-users me-2"></i>
+        Manage Users
+    </a>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-primary">
+            <span>Users</span>
+            <strong>—</strong>
+            <small>Municipal system users</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-info">
+            <span>Inspections</span>
+            <strong>—</strong>
+            <small>Total recorded inspections</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-warning">
+            <span>Open Repairs</span>
+            <strong>—</strong>
+            <small>Tasks awaiting completion</small>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-success">
+            <span>Reports</span>
+            <strong>—</strong>
+            <small>Available municipal reports</small>
+        </div>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div>
+            <h2>Quick Actions</h2>
+            <p>Operational modules will be connected in the next phases.</p>
+        </div>
+    </div>
+
+    <div class="quick-actions">
+        <a class="quick-action" href="{{ url_for('protected.users') }}">
+            <i class="fa-solid fa-user-plus"></i>
+            Manage Users
+        </a>
+
+        <a class="quick-action" href="{{ url_for('protected.inspections') }}">
+            <i class="fa-solid fa-clipboard-list"></i>
+            View Inspections
+        </a>
+
+        <a class="quick-action" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-screwdriver-wrench"></i>
+            Manage Repairs
+        </a>
+
+        <a class="quick-action" href="{{ url_for('protected.reports') }}">
+            <i class="fa-solid fa-file-export"></i>
+            Generate Reports
+        </a>
+    </div>
+</div>
+{% endblock %}

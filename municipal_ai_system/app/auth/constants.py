@@ -22,6 +22,7 @@ _ROLE_ALIASES = {
     'administrator': ROLE_ADMINISTRATOR,
     'municipal admin': ROLE_ADMINISTRATOR,
     'municipaladmin': ROLE_ADMINISTRATOR,
+    'municipal_admin': ROLE_ADMINISTRATOR,
     'field worker': ROLE_FIELD_WORKER,
     'fieldworker': ROLE_FIELD_WORKER,
     'field officer': ROLE_FIELD_OFFICER,
@@ -29,6 +30,7 @@ _ROLE_ALIASES = {
     'contractor': ROLE_CONTRACTOR,
     'super admin': ROLE_SUPER_ADMIN,
     'superadmin': ROLE_SUPER_ADMIN,
+    'super_admin': ROLE_SUPER_ADMIN,
     'viewer': ROLE_VIEWER,
 }
 

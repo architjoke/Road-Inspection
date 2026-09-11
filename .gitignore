@@ -1,0 +1,11 @@
+﻿.env
+.vscode/
+.idea/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+municipal_ai_system/app/instance/temp/inspections/

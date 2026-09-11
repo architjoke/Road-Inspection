@@ -13,12 +13,117 @@ from app.models.inspection_media import InspectionMedia
 from app.services.gps_service import resolve_inspection_gps
 from app.services.geocoding_service import resolve_location_label, reverse_geocode
 from app.services.media_service import save_phase4_temp_media
+from app.services.offline_store import offline_mode_enabled, offline_store
 from app.services.ward_service import find_ward_for_point
 from app.utils.file_validation import get_media_type
 from app.utils.identifiers import generate_inspection_code
 from app.utils.status_constants import MEDIA_PENDING, PENDING_ANALYSIS
 
 logger = logging.getLogger(__name__)
+
+
+def _offline_inspection_code() -> str:
+    return f"INS-OFF-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+
+
+def _create_inspection_offline(
+    current_user,
+    *,
+    location_name: str,
+    notes_text: str | None,
+    weather_conditions: str | None,
+    lighting_conditions: str | None,
+    latitude,
+    longitude,
+    accuracy,
+    gps_source: str,
+    needs_review: bool,
+    street_address: str | None,
+    geocoded: dict | None,
+    uploaded_file,
+):
+    municipality_id = current_user.municipality_id
+    inspection_code = _offline_inspection_code()
+    tags = [
+        inspection_code,
+        "ward_unassigned",
+        f"user_{getattr(current_user, 'pk', current_user.id)}",
+    ]
+    saved_media = save_phase4_temp_media(
+        uploaded_file=uploaded_file,
+        inspection_code=inspection_code,
+        tags=tags,
+    )
+
+    inspection = offline_store.create_inspection(
+        inspection_code=inspection_code,
+        municipality_id=municipality_id,
+        user_id=getattr(current_user, "pk", current_user.id),
+        ward_id=None,
+        inspection_date=datetime.now(),
+        location_name=location_name,
+        location_latitude=latitude,
+        location_longitude=longitude,
+        status=PENDING_ANALYSIS,
+        inspection_type="routine",
+        notes=notes_text,
+        weather_conditions=weather_conditions or None,
+        lighting_conditions=lighting_conditions or None,
+        total_detections=0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+
+    media = offline_store.add_media(
+        inspection.id,
+        media_type=saved_media["media_type"],
+        file_path=saved_media.get("local_path") or saved_media["file_path"],
+        file_name=saved_media["file_name"],
+        file_size_bytes=saved_media["file_size_bytes"],
+        mime_type=saved_media["mime_type"],
+        resolution_width=saved_media["resolution_width"],
+        resolution_height=saved_media["resolution_height"],
+        duration_seconds=saved_media["duration_seconds"],
+        captured_at=saved_media["captured_at"],
+        gps_latitude=latitude,
+        gps_longitude=longitude,
+        gps_accuracy_meters=accuracy,
+        exif_data={
+            "gps_source": gps_source,
+            "needs_review": needs_review,
+            "imagekit_file_id": saved_media.get("image_id"),
+            "street_address": street_address,
+            "geocode_display_name": (geocoded or {}).get("display_name"),
+            "local_path": saved_media.get("local_path"),
+            "offline": True,
+        },
+        storage_bucket=saved_media["storage_bucket"],
+        cdn_url=saved_media["cdn_url"],
+        thumbnail_path=saved_media["thumbnail_path"],
+        processing_status=MEDIA_PENDING,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+
+    # Refresh with media_items
+    inspection = offline_store.get_inspection(inspection.id)
+
+    analysis_task = None
+    try:
+        from app.services.task_service import submit_inspection_analysis
+
+        analysis_task = submit_inspection_analysis(
+            inspection_id=inspection.id,
+            media_id=media.id,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to enqueue analysis for offline inspection %s",
+            inspection.id,
+        )
+
+    inspection._analysis_task = analysis_task
+    return inspection
 
 
 def create_inspection_with_media(
@@ -47,10 +152,12 @@ def create_inspection_with_media(
         media_type=media_type,
     )
 
-    # Auto street address from GPS (Nominatim). Keep typed name if user provided one
-    # that is more specific than a placeholder.
-    geocoded = reverse_geocode(float(latitude), float(longitude))
-    street_address = (geocoded or {}).get("address") if geocoded else None
+    # Auto street address from GPS (Nominatim). Skipped offline (no internet).
+    geocoded = None
+    street_address = None
+    if not offline_mode_enabled():
+        geocoded = reverse_geocode(float(latitude), float(longitude))
+        street_address = (geocoded or {}).get("address") if geocoded else None
 
     placeholder_names = {
         "",
@@ -60,11 +167,16 @@ def create_inspection_with_media(
         "unknown",
     }
     if not location_name or location_name.lower() in placeholder_names:
-        location_name = resolve_location_label(
-            float(latitude),
-            float(longitude),
-            fallback=location_name or None,
-        )
+        if offline_mode_enabled():
+            location_name = (location_name or "").strip() or (
+                f"{float(latitude):.6f}, {float(longitude):.6f}"
+            )
+        else:
+            location_name = resolve_location_label(
+                float(latitude),
+                float(longitude),
+                fallback=location_name or None,
+            )
     elif street_address and street_address.lower() not in location_name.lower():
         # Keep worker note + append resolved address for searchability
         if len(location_name) < 80:
@@ -83,15 +195,6 @@ def create_inspection_with_media(
             gps_source,
         )
 
-    inspection_code = generate_inspection_code()
-
-    ward = find_ward_for_point(
-        float(latitude),
-        float(longitude),
-        municipality_id=municipality_id,
-    )
-    ward_id = ward.id if ward else None
-
     note_parts = []
     if notes:
         note_parts.append(notes)
@@ -104,8 +207,35 @@ def create_inspection_with_media(
     if street_address:
         note_parts.append(f"[Address: {street_address}]")
 
+    notes_text = " ".join(note_parts) or None
+
+    if offline_mode_enabled():
+        return _create_inspection_offline(
+            current_user,
+            location_name=location_name,
+            notes_text=notes_text,
+            weather_conditions=weather_conditions or None,
+            lighting_conditions=lighting_conditions or None,
+            latitude=latitude,
+            longitude=longitude,
+            accuracy=accuracy,
+            gps_source=gps_source,
+            needs_review=needs_review,
+            street_address=street_address,
+            geocoded=geocoded,
+            uploaded_file=uploaded_file,
+        )
 
     try:
+        inspection_code = generate_inspection_code()
+
+        ward = find_ward_for_point(
+            float(latitude),
+            float(longitude),
+            municipality_id=municipality_id,
+        )
+        ward_id = ward.id if ward else None
+
         inspection = Inspection(
             inspection_code=inspection_code,
             municipality_id=municipality_id,
@@ -121,7 +251,7 @@ def create_inspection_with_media(
             ),
             status=PENDING_ANALYSIS,
             inspection_type="routine",
-            notes=" ".join(note_parts) or None,
+            notes=notes_text,
             weather_conditions=weather_conditions or None,
             lighting_conditions=lighting_conditions or None,
             total_detections=0,
@@ -164,6 +294,7 @@ def create_inspection_with_media(
                 "imagekit_file_id": saved_media.get("image_id"),
                 "street_address": street_address,
                 "geocode_display_name": (geocoded or {}).get("display_name"),
+                "local_path": saved_media.get("local_path"),
             },
             is_before_image=True,
             is_after_image=False,
@@ -178,9 +309,22 @@ def create_inspection_with_media(
         db.session.add(media)
         db.session.commit()
 
-        # Phase 6/7 hook — AI detection queue (threading stub).
-        _queue_analysis_stub(inspection.id)
+        # Phase 6 — enqueue background YOLO analysis (non-blocking).
+        analysis_task = None
+        try:
+            from app.services.task_service import submit_inspection_analysis
 
+            analysis_task = submit_inspection_analysis(
+                inspection_id=inspection.id,
+                media_id=media.id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue analysis for inspection %s",
+                inspection.id,
+            )
+
+        inspection._analysis_task = analysis_task  # ephemeral for response helpers
         return inspection
 
     except Exception:
@@ -189,22 +333,31 @@ def create_inspection_with_media(
 
 
 def _queue_analysis_stub(inspection_id: int) -> None:
-    """Placeholder for Phase 6 background YOLO analysis."""
+    """Deprecated stub kept for import compatibility."""
     logger.info(
-        "Inspection %s queued for AI analysis (Phase 6 stub).",
+        "Inspection %s queued for AI analysis (legacy stub).",
         inspection_id,
     )
 
 
-def inspection_upload_payload(inspection: Inspection) -> dict:
+def inspection_upload_payload(inspection) -> dict:
     """JSON payload returned by the upload API."""
     media = inspection.media_items[0] if inspection.media_items else None
     ward_name = None
-    if inspection.ward_id:
-        from app.models.ward import Ward
+    if inspection.ward_id and not offline_mode_enabled():
+        try:
+            from app.models.ward import Ward
 
-        ward = db.session.get(Ward, inspection.ward_id)
-        ward_name = ward.name if ward else None
+            ward = db.session.get(Ward, inspection.ward_id)
+            ward_name = ward.name if ward else None
+        except Exception:
+            ward_name = None
+
+    local_path = None
+    if media is not None:
+        exif = getattr(media, "exif_data", None) or {}
+        if isinstance(exif, dict):
+            local_path = exif.get("local_path")
 
     return {
         "inspection_id": inspection.id,
@@ -220,7 +373,10 @@ def inspection_upload_payload(inspection: Inspection) -> dict:
             else None,
         },
         "image_url": (media.cdn_url or media.file_path) if media else None,
+        "local_path": local_path or (getattr(media, "file_path", None) if media else None),
+        "media_id": media.id if media else None,
         "ward_assigned": ward_name,
         "ward_id": inspection.ward_id,
         "status": inspection.status,
+        "analysis_task": getattr(inspection, "_analysis_task", None),
     }

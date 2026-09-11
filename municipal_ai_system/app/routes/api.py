@@ -244,12 +244,94 @@ def inspections_upload():
         payload = inspection_upload_payload(inspection)
         return jsonify(payload), 201
     except ValueError as exc:
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return jsonify({"error": str(exc)}), 400
     except Exception:
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         logger.exception(
             "Upload API failed for user_id=%s",
             getattr(current_user, "pk", getattr(current_user, "id", None)),
         )
         return jsonify({"error": "Upload failed, please try again."}), 500
+
+
+@api_bp.route("/inspections/<int:inspection_id>/analyze", methods=["POST"])
+@csrf.exempt
+@login_required
+@roles_required(
+    "field_worker",
+    "municipal_admin",
+    "super_admin",
+    "field_officer",
+)
+def submit_analysis(inspection_id: int):
+    """Enqueue Phase 6/7 background analysis; returns task_id immediately."""
+    from app.services.offline_store import offline_mode_enabled, offline_store
+    from app.services.task_service import submit_inspection_analysis
+
+    if offline_mode_enabled():
+        inspection = offline_store.get_inspection(inspection_id)
+    else:
+        from app.models.inspection import Inspection
+
+        inspection = db.session.get(Inspection, inspection_id)
+
+    if inspection is None:
+        return jsonify({"error": "Inspection not found."}), 404
+
+    media_id = request.json.get("media_id") if request.is_json else request.form.get("media_id")
+    if media_id is not None:
+        try:
+            media_id = int(media_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "media_id must be an integer."}), 400
+
+    try:
+        task = submit_inspection_analysis(inspection_id, media_id)
+        return jsonify(task), 202
+    except Exception:
+        logger.exception("Failed to submit analysis for inspection %s", inspection_id)
+        return jsonify({"error": "Could not submit analysis task."}), 500
+
+
+@api_bp.route("/tasks/<task_id>")
+@login_required
+def task_status(task_id: str):
+    from app.services.task_service import get_task_status
+
+    payload = get_task_status(task_id)
+    if payload is None:
+        return jsonify({"error": "Task not found."}), 404
+    return jsonify(payload)
+
+
+@api_bp.route("/tasks/<task_id>/result")
+@login_required
+def task_result(task_id: str):
+    from app.services.task_service import get_task_result
+    from app.workers.task_store import TASK_FAILED, TASK_SUCCEEDED
+
+    payload = get_task_result(task_id)
+    if payload is None:
+        return jsonify({"error": "Task not found."}), 404
+
+    status = payload.get("status")
+    if status == TASK_SUCCEEDED:
+        return jsonify(payload)
+    if status == TASK_FAILED:
+        return jsonify(payload), 200
+    return jsonify(
+        {
+            "task_id": payload.get("task_id"),
+            "status": status,
+            "progress": payload.get("progress"),
+            "message": "Task is still in progress.",
+        }
+    ), 202
+

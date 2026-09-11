@@ -64,3 +64,49 @@ class Config:
     IMAGEKIT_PUBLIC_KEY = os.getenv("IMAGEKIT_PUBLIC_KEY", "")
     IMAGEKIT_PRIVATE_KEY = os.getenv("IMAGEKIT_PRIVATE_KEY", "")
     IMAGEKIT_URL_ENDPOINT = os.getenv("IMAGEKIT_URL_ENDPOINT", "")
+
+    # Phase 6/7 — YOLO analysis
+    YOLO_MODEL_PATH = os.getenv(
+        "YOLO_MODEL_PATH",
+        str(APP_DIR / "ai_models" / "best.pt"),
+    )
+    YOLO_CONFIDENCE = float(os.getenv("YOLO_CONFIDENCE", "0.25"))
+    YOLO_IOU = float(os.getenv("YOLO_IOU", "0.45"))
+    YOLO_IMGSZ = int(os.getenv("YOLO_IMGSZ", "640"))
+    YOLO_DEVICE = os.getenv("YOLO_DEVICE", "cpu")
+    YOLO_FORCE_MOCK = os.getenv("YOLO_FORCE_MOCK", "false").lower() == "true"
+    ANALYSIS_MAX_WORKERS = int(os.getenv("ANALYSIS_MAX_WORKERS", "2"))
+
+    # Phase 8 — optional pixel segmentation (disabled by default)
+    SEGMENTATION_ENABLED = os.getenv("SEGMENTATION_ENABLED", "false").lower() == "true"
+    SEGMENTATION_FORCE_MOCK = os.getenv("SEGMENTATION_FORCE_MOCK", "true").lower() == "true"
+    SEGMENTATION_MODEL_PATH = os.getenv("SEGMENTATION_MODEL_PATH", "") or ""
+    SEGMENTATION_DEVICE = os.getenv("SEGMENTATION_DEVICE", "cpu")
+    try:
+        SEGMENTATION_CONFIDENCE_THRESHOLD = float(
+            os.getenv("SEGMENTATION_CONFIDENCE_THRESHOLD", "0.25")
+        )
+    except ValueError:
+        SEGMENTATION_CONFIDENCE_THRESHOLD = 0.25
+    try:
+        SEGMENTATION_IMAGE_SIZE = int(os.getenv("SEGMENTATION_IMAGE_SIZE", "640"))
+    except ValueError:
+        SEGMENTATION_IMAGE_SIZE = 640
+    SEGMENTATION_OUTPUT_DIR = os.getenv("SEGMENTATION_OUTPUT_DIR", "") or ""
+
+    # Phase 9 — optional monocular depth (disabled by default; relative only)
+    DEPTH_ENABLED = os.getenv("DEPTH_ENABLED", "false").lower() == "true"
+    DEPTH_FORCE_MOCK = os.getenv("DEPTH_FORCE_MOCK", "true").lower() == "true"
+    DEPTH_MODEL_PATH = os.getenv("DEPTH_MODEL_PATH", "") or ""
+    DEPTH_MODEL_TYPE = os.getenv("DEPTH_MODEL_TYPE", "relative_mock")
+    DEPTH_DEVICE = os.getenv("DEPTH_DEVICE", "cpu")
+    try:
+        DEPTH_IMAGE_SIZE = int(os.getenv("DEPTH_IMAGE_SIZE", "384"))
+    except ValueError:
+        DEPTH_IMAGE_SIZE = 384
+    DEPTH_OUTPUT_DIR = os.getenv("DEPTH_OUTPUT_DIR", "") or ""
+    DEPTH_NORMALIZATION_MODE = os.getenv("DEPTH_NORMALIZATION_MODE", "relative")
+    try:
+        DEPTH_MIN_CONFIDENCE = float(os.getenv("DEPTH_MIN_CONFIDENCE", "0.0"))
+    except ValueError:
+        DEPTH_MIN_CONFIDENCE = 0.0

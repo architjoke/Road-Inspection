@@ -83,8 +83,10 @@ def save_phase4_temp_media(
             logger.exception("Video metadata inspection failed for %s", original_name)
 
     from app.services.imagekit_service import is_imagekit_configured, upload_to_imagekit
+    from app.services.offline_store import offline_mode_enabled
 
-    if is_imagekit_configured():
+    # Offline/TESTING: keep local storage only (no ImageKit / internet).
+    if is_imagekit_configured() and not offline_mode_enabled():
         try:
             if hasattr(uploaded_file.stream, "seek"):
                 uploaded_file.stream.seek(0)

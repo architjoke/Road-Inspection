@@ -2,6 +2,7 @@ from flask import Flask, jsonify, redirect, render_template, url_for
 from flask_login import current_user
 from pathlib import Path
 import logging
+import os
 
 from app.config import Config
 from app.extensions import csrf, db, limiter, login_manager
@@ -20,20 +21,47 @@ def _database_configured(app: Flask) -> bool:
     return not any(token in uri for token in placeholders)
 
 
-def create_app():
+def create_app(config_overrides: dict | None = None):
     app = Flask(__name__)
     app.config.from_object(Config)
+    if config_overrides:
+        app.config.update(config_overrides)
 
-    db_ok = _database_configured(app)
-    app.config["DATABASE_CONFIGURED"] = db_ok
+    # Offline/pytest: never attempt remote DB reflection.
+    offline_env = os.getenv("OFFLINE_MODE", "").lower() == "true"
+    if config_overrides and "OFFLINE_MODE" in config_overrides:
+        offline_env = bool(config_overrides.get("OFFLINE_MODE"))
+    if offline_env:
+        app.config["OFFLINE_MODE"] = True
+
+    if (
+        app.config.get("TESTING")
+        or app.config.get("OFFLINE_MODE")
+        or offline_env
+    ):
+        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {}
+        app.config["DATABASE_CONFIGURED"] = False
+        app.config["OFFLINE_MODE"] = True
+        db_ok = False
+    else:
+        db_ok = _database_configured(app)
+        app.config["DATABASE_CONFIGURED"] = db_ok
 
     if not db_ok:
-        logger.error(
-            "DATABASE_URL is missing or still a placeholder. "
-            "Edit municipal_ai_system/.env (copied from .env.example if needed), "
-            "set a real DATABASE_URL, then restart the app. "
-            "Login will not work until the database is configured."
-        )
+        if app.config.get("TESTING") or app.config.get("OFFLINE_MODE"):
+            logger.info(
+                "Offline/TESTING mode: database reflection disabled "
+                "(sqlite memory; no RDS/Aurora)."
+            )
+        else:
+            logger.error(
+                "DATABASE_URL is missing or still a placeholder. "
+                "Edit municipal_ai_system/.env (copied from .env.example if needed), "
+                "set a real DATABASE_URL, then restart the app. "
+                "Login will not work until the database is configured. "
+                "For local acceptance without RDS, set OFFLINE_MODE=true."
+            )
 
     # Always register extensions — never skip db.init_app
     csrf.init_app(app)
@@ -66,7 +94,8 @@ def create_app():
                 "status": "ok",
                 "application": "AI Road Inspection System",
                 "database_configured": bool(app.config.get("DATABASE_CONFIGURED")),
-                "phase": "phase_4_5_frontend_storage",
+                "offline_mode": bool(app.config.get("OFFLINE_MODE")),
+                "phase": "phase_8_9_segmentation_depth",
             }
         ), 200
 

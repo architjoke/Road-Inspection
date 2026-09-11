@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}429 Too Many Requests{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="error-card shadow-sm">
+        <div class="error-code">429</div>
+        <h1>Too Many Requests</h1>
+        <p>
+            {{ error_message or "You have sent too many requests. Please wait a moment and try again." }}
+        </p>
+
+        {% if current_user.is_authenticated %}
+        <a class="btn btn-primary" href="{{ url_for('dashboard.index') }}">
+            <i class="fa-solid fa-house me-2"></i>
+            Go to Dashboard
+        </a>
+        {% else %}
+        <a class="btn btn-primary" href="{{ url_for('auth.login') }}">
+            <i class="fa-solid fa-right-to-bracket me-2"></i>
+            Go to Login
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

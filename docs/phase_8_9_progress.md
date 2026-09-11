@@ -21,9 +21,8 @@
 
 ## Tests (latest)
 ```
-Phase 8/9 focused: 29 passed
-Mock full suite (YOLO_FORCE_MOCK=true): 67 passed, 6 skipped
-Real YOLO CPU suite (YOLO_FORCE_MOCK=false): 67 passed, 6 skipped
+Phase 8/9 focused: 29 passed (unchanged module set)
+Full project suite after Phase 10: 81 passed, 6 skipped
 No real segmentation/depth weight smoke (weights not present)
 ```
 
@@ -31,6 +30,7 @@ No real segmentation/depth weight smoke (weights not present)
 - Real seg/depth require local weights (`SEGMENTATION_MODEL_PATH` / `DEPTH_MODEL_PATH`)
 - No metric depth, volume, or physical area without calibration
 - Overlay/depth maps stored as local files; raw arrays not written to DB
+- Severity engine (Phase 10) consumes optional seg/depth evidence when present
 - RDS/Aurora was not contacted
 
 ## Next optional work

@@ -33,6 +33,9 @@ def _reset_stores():
     from app.ai.model_loader import reset_model_cache
     from app.ai.segmentation import reset_segmentation_cache
     from app.services.detection_service import clear_memory_detections
+    from app.services.comparison_service import clear_comparisons
+    from app.services.report_service import clear_report_jobs
+    from app.services.audit_trail import clear_audit_events
     from app.services.offline_store import offline_store
     from app.workers.executor import reset_executor_for_tests
     from app.workers.task_store import task_store
@@ -41,6 +44,9 @@ def _reset_stores():
     reset_segmentation_cache()
     reset_depth_cache()
     clear_memory_detections()
+    clear_comparisons()
+    clear_report_jobs()
+    clear_audit_events()
     task_store.clear()
     offline_store.clear()
     yield
@@ -48,6 +54,9 @@ def _reset_stores():
     reset_segmentation_cache()
     reset_depth_cache()
     clear_memory_detections()
+    clear_comparisons()
+    clear_report_jobs()
+    clear_audit_events()
     task_store.clear()
     offline_store.clear()
     reset_executor_for_tests()

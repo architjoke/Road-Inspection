@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/detections.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Phase 10 severity review</p>
+        <h1>{{ page_title }}</h1>
+        <p class="text-muted mb-0">
+            Severity, priority, recommendations, and evidence from the offline detection store.
+            Relative depth is supporting evidence only (not metric).
+        </p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('dashboard.index') }}">
+        Back to Dashboard
+    </a>
+</div>
+
+<div class="content-card detection-review"
+     x-data="{
+        query: '',
+        severity: '',
+        reviewOnly: false,
+        rows: {{ detections | tojson }}
+     }">
+    <div class="p-3 border-bottom">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="det-search">Search</label>
+                <input id="det-search" type="search" class="form-control"
+                       placeholder="Class, action, inspection…" x-model="query">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="sev-filter">Severity</label>
+                <select id="sev-filter" class="form-select" x-model="severity">
+                    <option value="">All</option>
+                    <option value="SEVERE">SEVERE</option>
+                    <option value="MODERATE">MODERATE</option>
+                    <option value="MINOR">MINOR</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="review-only" x-model="reviewOnly">
+                    <label class="form-check-label" for="review-only">Manual review only</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-secondary w-100"
+                        @click="query=''; severity=''; reviewOnly=false">Clear</button>
+            </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">
+            Store: <code x-text="'{{ persistence_mode }}'"></code>
+            — {{ note }}
+        </p>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 detection-review-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Class</th>
+                    <th>Conf.</th>
+                    <th>Severity</th>
+                    <th>Priority</th>
+                    <th>Action</th>
+                    <th>Area</th>
+                    <th>Rel. depth</th>
+                    <th>Review</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="row in rows.filter(r => {
+                    const q = query.toLowerCase();
+                    const hay = ((r.damage_type||'') + ' ' + (r.class_name||'') + ' ' +
+                                 (r.recommended_action||'') + ' ' + (r.inspection_id||'')).toLowerCase();
+                    if (q && !hay.includes(q)) return false;
+                    if (severity && r.severity !== severity) return false;
+                    if (reviewOnly && !r.manual_review_required) return false;
+                    return true;
+                })" :key="row.detection_id">
+                    <tr>
+                        <td>
+                            <span x-text="row.detection_id"></span>
+                            <div class="small text-muted">ins <span x-text="row.inspection_id"></span></div>
+                        </td>
+                        <td x-text="row.damage_type || row.class_name || '—'"></td>
+                        <td x-text="row.confidence != null ? Number(row.confidence).toFixed(2) : '—'"></td>
+                        <td>
+                            <span class="sev-badge"
+                                  :class="'sev-' + (row.severity || 'unknown').toLowerCase()"
+                                  x-text="row.severity || '—'"></span>
+                            <div class="small text-muted" x-show="row.severity_score != null">
+                                score <span x-text="Number(row.severity_score).toFixed(2)"></span>
+                            </div>
+                        </td>
+                        <td x-text="row.priority ?? '—'"></td>
+                        <td>
+                            <div x-text="row.recommended_action || '—'"></div>
+                            <div class="small text-muted" x-text="row.repair_type || ''"></div>
+                        </td>
+                        <td>
+                            <template x-if="row.damaged_area_percentage != null">
+                                <span>
+                                    <span x-text="Number(row.damaged_area_percentage).toFixed(2)"></span>%px
+                                </span>
+                            </template>
+                            <template x-if="row.damaged_area_percentage == null">
+                                <span class="text-muted">bbox fallback</span>
+                            </template>
+                        </td>
+                        <td>
+                            <template x-if="row.mean_relative_depth != null">
+                                <span>
+                                    <span x-text="Number(row.mean_relative_depth).toFixed(3)"></span>
+                                    <span class="small text-muted">rel.</span>
+                                </span>
+                            </template>
+                            <template x-if="row.mean_relative_depth == null">
+                                <span class="text-muted">n/a</span>
+                            </template>
+                        </td>
+                        <td>
+                            <span class="badge text-bg-warning" x-show="row.manual_review_required">Required</span>
+                            <span class="text-muted" x-show="!row.manual_review_required">—</span>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="p-4 empty-state" x-show="rows.length === 0">
+        <h2>No detections in memory</h2>
+        <p>
+            Run an offline analysis (upload + task result) to populate the in-memory store.
+            This page does not require RDS.
+        </p>
+    </div>
+</div>
+{% endblock %}

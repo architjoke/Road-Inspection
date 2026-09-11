@@ -12,7 +12,7 @@
         <p class="page-kicker">Work verification</p>
         <h1>Repair Manager</h1>
         <p class="text-muted mb-0">
-            Before/after comparison workspace for repair evidence review.
+            Before/after comparison with OpenCV alignment and SSIM scoring.
         </p>
     </div>
 </div>
@@ -21,7 +21,7 @@
     <div class="content-card-header">
         <div>
             <h2>Before / After Comparison</h2>
-            <p>Upload or pick before and after images to visually verify repair quality.</p>
+            <p>Upload before and after images to run automated repair verification.</p>
         </div>
     </div>
 
@@ -54,19 +54,35 @@
         </div>
 
         <div class="d-flex flex-wrap gap-2 mt-4">
-            <button type="button" class="btn btn-primary" @click="confirmVerify()"
-                :disabled="!beforeUrl || !afterUrl">
-                Mark as Verified
+            <button type="button" class="btn btn-primary" @click="runCompare()"
+                :disabled="!beforeFile || !afterFile || comparing">
+                <span x-text="comparing ? 'Comparing…' : 'Run SSIM Verification'"></span>
             </button>
-            <button type="button" class="btn btn-outline-danger"
-                @click="confirmReject()">
-                Flag as Incomplete
+            <button type="button" class="btn btn-outline-secondary" @click="confirmReject()"
+                :disabled="!result">
+                Flag for Manual Review
             </button>
         </div>
 
+        <div class="mt-4" x-show="result" x-cloak>
+            <h3 class="h6">Verification result</h3>
+            <dl class="row small mb-0">
+                <dt class="col-sm-4">Status</dt>
+                <dd class="col-sm-8" x-text="result?.status || '—'"></dd>
+                <dt class="col-sm-4">SSIM</dt>
+                <dd class="col-sm-8" x-text="result?.ssim != null ? result.ssim.toFixed(4) : '—'"></dd>
+                <dt class="col-sm-4">Completion</dt>
+                <dd class="col-sm-8" x-text="result?.completion_percentage != null ? (result.completion_percentage + '%') : '—'"></dd>
+                <dt class="col-sm-4">Manual review</dt>
+                <dd class="col-sm-8" x-text="result?.manual_review_required ? 'Required' : 'Not required'"></dd>
+                <dt class="col-sm-4">Alignment</dt>
+                <dd class="col-sm-8" x-text="(result?.alignment_method || '—') + (result?.alignment_success ? ' (ok)' : ' (fallback)')"></dd>
+            </dl>
+        </div>
+
         <p class="text-muted small mt-3 mb-0">
-            Full repair-task assignment and AI similarity scoring arrive in later phases.
-            This screen prepares the verification UI and confirmation dialogs.
+            SSIM &lt; 0.60 → Repair Verified; 0.60–0.85 → Partial (review);
+            &gt; 0.85 → No Change (review). Alignment uses ORB + RANSAC with resize fallback.
         </p>
     </div>
 </div>
@@ -78,23 +94,54 @@
         return {
             beforeUrl: '',
             afterUrl: '',
+            beforeFile: null,
+            afterFile: null,
+            comparing: false,
+            result: null,
             setBefore(event) {
                 const file = event.target.files[0];
                 if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);
+                this.beforeFile = file || null;
                 this.beforeUrl = file ? URL.createObjectURL(file) : '';
+                this.result = null;
             },
             setAfter(event) {
                 const file = event.target.files[0];
                 if (this.afterUrl) URL.revokeObjectURL(this.afterUrl);
+                this.afterFile = file || null;
                 this.afterUrl = file ? URL.createObjectURL(file) : '';
+                this.result = null;
             },
-            confirmVerify() {
-                if (!window.confirm('Mark this repair as verified?')) return;
-                window.RoadInspectionUI?.toast('Repair marked verified (UI stub).', 'success');
+            async runCompare() {
+                if (!this.beforeFile || !this.afterFile) return;
+                this.comparing = true;
+                this.result = null;
+                try {
+                    const form = new FormData();
+                    form.append('before', this.beforeFile);
+                    form.append('after', this.afterFile);
+                    const response = await fetch('/api/verification/compare', {
+                        method: 'POST',
+                        body: form,
+                        credentials: 'same-origin',
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        window.RoadInspectionUI?.toast(data.error || 'Verification failed.', 'danger');
+                        return;
+                    }
+                    this.result = data;
+                    const level = data.manual_review_required ? 'warning' : 'success';
+                    window.RoadInspectionUI?.toast(data.status || 'Verification complete.', level);
+                } catch (err) {
+                    window.RoadInspectionUI?.toast('Verification request failed.', 'danger');
+                } finally {
+                    this.comparing = false;
+                }
             },
             confirmReject() {
-                if (!window.confirm('Flag this repair as incomplete?')) return;
-                window.RoadInspectionUI?.toast('Repair flagged incomplete (UI stub).', 'warning');
+                if (!window.confirm('Flag this repair for supervisor review?')) return;
+                window.RoadInspectionUI?.toast('Flagged for manual review.', 'warning');
             }
         };
     }

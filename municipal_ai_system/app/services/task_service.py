@@ -73,7 +73,57 @@ def get_task_status(task_id: str) -> dict | None:
 
 
 def get_task_result(task_id: str) -> dict | None:
+    """Return task payload; add optional Phase 12 verification summary when linked."""
     task = task_store.get(task_id)
     if task is None:
         return None
-    return task.to_dict()
+    payload = task.to_dict()
+
+    # Additive verification fields (compatible with existing clients).
+    inspection_id = payload.get("inspection_id")
+    if inspection_id is not None:
+        try:
+            from app.services.comparison_service import (
+                summarize_inspection_verifications,
+            )
+
+            summary = summarize_inspection_verifications(int(inspection_id))
+            if summary.get("count", 0) > 0:
+                payload["verification"] = {
+                    "count": summary["count"],
+                    "status": summary["status"],
+                    "completion_percentage": summary["completion_percentage"],
+                    "manual_review_required": summary["manual_review_required"],
+                    "comparisons": [
+                        {
+                            "comparison_id": c.get("comparison_id"),
+                            "ssim": c.get("ssim"),
+                            "status": c.get("status"),
+                            "completion_percentage": c.get("completion_percentage"),
+                            "manual_review_required": c.get(
+                                "manual_review_required"
+                            ),
+                            "aligned_after_path": c.get("aligned_after_path"),
+                            "diff_path": c.get("diff_path"),
+                            "created_at": c.get("created_at"),
+                        }
+                        for c in summary.get("comparisons") or []
+                    ],
+                }
+            else:
+                payload.setdefault(
+                    "verification",
+                    {
+                        "count": 0,
+                        "status": None,
+                        "completion_percentage": None,
+                        "manual_review_required": False,
+                        "comparisons": [],
+                    },
+                )
+        except Exception:
+            logger.debug(
+                "Verification summary unavailable for task %s", task_id, exc_info=True
+            )
+
+    return payload

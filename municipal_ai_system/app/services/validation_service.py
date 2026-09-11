@@ -34,7 +34,11 @@ def validate_upload(file: FileStorage, file_type: str | None = None) -> dict:
     if file is None or not file.filename:
         return {"valid": False, "error": "Please choose an image or video file."}
 
-    extension = Path(file.filename).suffix.lower().lstrip(".")
+    if ".." in file.filename or file.filename.startswith(("/", "\\")):
+        return {"valid": False, "error": "Invalid file name."}
+
+    raw_name = Path(file.filename).name
+    extension = Path(raw_name).suffix.lower().lstrip(".")
     allowed_images = current_app.config.get(
         "ALLOWED_IMAGE_EXTENSIONS", {"jpg", "jpeg", "png"}
     )
@@ -49,7 +53,7 @@ def validate_upload(file: FileStorage, file_type: str | None = None) -> dict:
             "error": "Unsupported file type. Allowed: JPG, JPEG, PNG, MP4, MOV.",
         }
 
-    media_type = file_type or get_media_type(file.filename)
+    media_type = file_type or get_media_type(raw_name)
     if media_type == "unknown":
         return {"valid": False, "error": "Unable to determine media type."}
 
@@ -81,7 +85,7 @@ def validate_upload(file: FileStorage, file_type: str | None = None) -> dict:
         }
 
     declared_mime = (file.mimetype or "").lower()
-    guessed_mime = (mimetypes.guess_type(file.filename)[0] or "").lower()
+    guessed_mime = (mimetypes.guess_type(raw_name)[0] or "").lower()
     expected = ALLOWED_MIME.get(extension, set())
 
     if declared_mime and expected and declared_mime not in expected:
@@ -106,4 +110,53 @@ def validate_upload(file: FileStorage, file_type: str | None = None) -> dict:
         "resolution_height": None,
         "warnings": warnings,
         "min_resolution_hint": f"{MIN_WIDTH}x{MIN_HEIGHT}",
+        "safe_filename": raw_name,
     }
+
+
+ALLOWED_REPORT_FORMATS = {"pdf", "csv", "excel", "xlsx", "json"}
+
+
+def validate_coordinates(lat: object, lng: object) -> dict:
+    """Strict lat/lng validation for API filters and geotags."""
+    try:
+        latitude = float(lat)
+        longitude = float(lng)
+    except (TypeError, ValueError):
+        return {"valid": False, "error": "Latitude and longitude must be numbers."}
+
+    if not (-90.0 <= latitude <= 90.0):
+        return {"valid": False, "error": "Latitude must be between -90 and 90."}
+    if not (-180.0 <= longitude <= 180.0):
+        return {"valid": False, "error": "Longitude must be between -180 and 180."}
+
+    return {
+        "valid": True,
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+
+
+def validate_report_format(fmt: object) -> dict:
+    """Sanitize report export format parameter."""
+    if fmt is None or fmt == "":
+        return {"valid": True, "format": "pdf"}
+    value = str(fmt).strip().lower()
+    if value not in ALLOWED_REPORT_FORMATS:
+        return {
+            "valid": False,
+            "error": "Unsupported format. Allowed: pdf, csv, excel, json.",
+        }
+    if value == "xlsx":
+        value = "excel"
+    return {"valid": True, "format": value}
+
+
+def validate_positive_int(value: object, field: str = "id") -> dict:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return {"valid": False, "error": f"{field} must be an integer."}
+    if number < 1:
+        return {"valid": False, "error": f"{field} must be a positive integer."}
+    return {"valid": True, "value": number}

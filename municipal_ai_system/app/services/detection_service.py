@@ -91,6 +91,11 @@ def save_detections_memory(
                 "damaged_area_percentage": det.get("damaged_area_percentage"),
                 "mean_relative_depth": det.get("mean_relative_depth"),
                 "median_relative_depth": det.get("median_relative_depth"),
+                "severity_score": det.get("severity_score"),
+                "recommended_action": det.get("recommended_action"),
+                "repair_type": det.get("repair_type"),
+                "manual_review_required": det.get("manual_review_required"),
+                "severity_assessment": det.get("severity_assessment"),
                 "severity_evidence": det.get("severity_evidence"),
                 "created_at": datetime.utcnow().isoformat() + "Z",
             }

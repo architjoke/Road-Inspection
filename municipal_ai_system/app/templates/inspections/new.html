@@ -12,7 +12,7 @@
         <p class="page-kicker">Field data collection</p>
         <h1>New Road Inspection</h1>
         <p class="text-muted mb-0">
-            Upload a road image/video. GPS can come from the browser, EXIF, or manual entry.
+            Capture with the live camera or upload a file. GPS can come from the browser, EXIF, or manual entry.
         </p>
     </div>
 
@@ -88,6 +88,32 @@
                 </div>
 
                 <div class="p-4">
+                    <div class="camera-capture-panel mb-4" id="camera-capture-panel">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Live camera capture</strong>
+                            <span class="small text-muted" id="camera-capture-status">Camera idle</span>
+                        </div>
+                        <video id="camera-preview" class="camera-preview" playsinline autoplay muted></video>
+                        <canvas id="camera-canvas" class="d-none"></canvas>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <button type="button" class="btn btn-outline-secondary" id="start-camera-button">
+                                <i class="fa-solid fa-video me-1"></i> Start camera
+                            </button>
+                            <button type="button" class="btn btn-primary" id="capture-image-button" disabled>
+                                <i class="fa-solid fa-camera me-1"></i> Capture Image
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="stop-camera-button" disabled>
+                                Stop
+                            </button>
+                            <a class="btn btn-outline-success d-none" id="open-map-after-capture" href="/map">
+                                Open map
+                            </a>
+                        </div>
+                        <p class="small text-muted mt-2 mb-0">
+                            Capture grabs a still frame, reads GPS, uploads for analysis, then plots on the map.
+                        </p>
+                    </div>
+
                     <label for="media_file" class="upload-drop-zone" id="upload-drop-zone"
                         :class="{ 'drag-over': dragging }"
                         @dragenter.prevent="dragging = true"
@@ -213,4 +239,5 @@
 {% block page_js %}
 <script src="{{ url_for('static', filename='js/geolocation.js') }}"></script>
 <script src="{{ url_for('static', filename='js/inspection_upload.js') }}"></script>
+<script src="{{ url_for('static', filename='js/camera_capture.js') }}"></script>
 {% endblock %}

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Exports</p>
+        <h1>Inspection Reports</h1>
+        <p class="text-muted mb-0">
+            Download PDF, CSV, Excel, or JSON reports offline (no remote services).
+        </p>
+    </div>
+</div>
+
+<div class="content-card" x-data="reportExporter()">
+    <div class="content-card-header">
+        <div>
+            <h2>Export by inspection ID</h2>
+            <p>Compiles severity, GPS, and before/after verification into one package.</p>
+        </div>
+    </div>
+    <div class="p-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold">Inspection ID</label>
+                <input type="number" min="1" class="form-control" x-model="inspectionId"
+                    placeholder="e.g. 1">
+            </div>
+            <div class="col-md-8">
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary"
+                        :href="inspectionId ? ('/api/reports/' + inspectionId + '/pdf') : '#'"
+                        :class="{ 'disabled': !inspectionId }">
+                        Download PDF
+                    </a>
+                    <a class="btn btn-outline-primary"
+                        :href="inspectionId ? ('/api/reports/' + inspectionId + '/csv') : '#'"
+                        :class="{ 'disabled': !inspectionId }">
+                        Export CSV
+                    </a>
+                    <a class="btn btn-outline-primary"
+                        :href="inspectionId ? ('/api/reports/' + inspectionId + '/excel') : '#'"
+                        :class="{ 'disabled': !inspectionId }">
+                        Export Excel
+                    </a>
+                    <a class="btn btn-outline-secondary"
+                        :href="inspectionId ? ('/api/reports/' + inspectionId + '/json') : '#'"
+                        :class="{ 'disabled': !inspectionId }">
+                        Download JSON
+                    </a>
+                    <button type="button" class="btn btn-outline-dark" @click="enqueueAsync()"
+                        :disabled="!inspectionId || enqueueing">
+                        <span x-text="enqueueing ? 'Queuing…' : 'Queue PDF (background)'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0" x-show="jobMessage" x-text="jobMessage"></p>
+        <p class="text-muted small mt-3 mb-0">
+            Reports use in-memory detections and verification records when
+            <code>OFFLINE_MODE</code> is enabled. RDS is not required.
+        </p>
+    </div>
+</div>
+
+{% if inspections %}
+<div class="content-card mt-4">
+    <div class="content-card-header">
+        <div>
+            <h2>Recent offline inspections</h2>
+        </div>
+    </div>
+    <div class="table-responsive p-3">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Code</th>
+                    <th>Location</th>
+                    <th>Status</th>
+                    <th>Exports</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in inspections %}
+                <tr>
+                    <td>{{ row.id }}</td>
+                    <td>{{ row.inspection_code }}</td>
+                    <td>{{ row.location_name or "—" }}</td>
+                    <td>{{ row.status }}</td>
+                    <td class="text-nowrap">
+                        <a class="btn btn-sm btn-outline-primary" href="/api/reports/{{ row.id }}/pdf">PDF</a>
+                        <a class="btn btn-sm btn-outline-primary" href="/api/reports/{{ row.id }}/csv">CSV</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="/api/reports/{{ row.id }}/json">JSON</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block page_js %}
+<script>
+    function reportExporter() {
+        return {
+            inspectionId: '',
+            enqueueing: false,
+            jobMessage: '',
+            async enqueueAsync() {
+                if (!this.inspectionId) return;
+                this.enqueueing = true;
+                this.jobMessage = '';
+                try {
+                    const response = await fetch('/api/reports/export', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            inspection_id: Number(this.inspectionId),
+                            format: 'pdf',
+                            async: true,
+                        }),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        this.jobMessage = data.error || 'Queue failed.';
+                        return;
+                    }
+                    this.jobMessage = 'Job ' + data.job_id + ' status: ' + data.status
+                        + ' — poll /api/reports/jobs/' + data.job_id;
+                    window.RoadInspectionUI?.toast('Report job queued.', 'success');
+                } catch (e) {
+                    this.jobMessage = 'Could not queue report job.';
+                } finally {
+                    this.enqueueing = false;
+                }
+            }
+        };
+    }
+</script>
+{% endblock %}

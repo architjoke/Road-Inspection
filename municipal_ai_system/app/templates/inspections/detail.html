@@ -32,6 +32,30 @@
     {% endif %}
 </div>
 
+<div class="content-card mb-4">
+    <div class="content-card-header">
+        <div>
+            <h2>Export report</h2>
+            <p>Download compiled PDF, CSV, Excel, or JSON for this inspection.</p>
+        </div>
+    </div>
+    <div class="p-4 d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" href="/api/reports/{{ inspection.id }}/pdf">
+            Download PDF
+        </a>
+        <a class="btn btn-outline-primary" href="/api/reports/{{ inspection.id }}/csv">
+            Export CSV
+        </a>
+        <a class="btn btn-outline-primary" href="/api/reports/{{ inspection.id }}/excel">
+            Export Excel
+        </a>
+        <a class="btn btn-outline-secondary" href="/api/reports/{{ inspection.id }}/json">
+            Download JSON
+        </a>
+        <a class="btn btn-link" href="{{ url_for('protected.reports') }}">Reports dashboard</a>
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-lg-7">
         <div class="content-card">

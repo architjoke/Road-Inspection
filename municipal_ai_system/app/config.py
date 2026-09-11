@@ -110,3 +110,72 @@ class Config:
         DEPTH_MIN_CONFIDENCE = float(os.getenv("DEPTH_MIN_CONFIDENCE", "0.0"))
     except ValueError:
         DEPTH_MIN_CONFIDENCE = 0.0
+
+    # Phase 10 — severity rule overrides (defaults live in severity_rules.py)
+    SEVERITY_RULE_VERSION = os.getenv("SEVERITY_RULE_VERSION", "phase10-v1")
+    try:
+        SEVERITY_CONFIDENCE_MIN_REVIEW = float(
+            os.getenv("SEVERITY_CONFIDENCE_MIN_REVIEW", "0.35")
+        )
+    except ValueError:
+        SEVERITY_CONFIDENCE_MIN_REVIEW = 0.35
+    try:
+        SEVERITY_CONFIDENCE_AMBIGUOUS = float(
+            os.getenv("SEVERITY_CONFIDENCE_AMBIGUOUS", "0.45")
+        )
+    except ValueError:
+        SEVERITY_CONFIDENCE_AMBIGUOUS = 0.45
+    try:
+        SEVERITY_SCORE_SEVERE = float(os.getenv("SEVERITY_SCORE_SEVERE", "0.72"))
+    except ValueError:
+        SEVERITY_SCORE_SEVERE = 0.72
+    try:
+        SEVERITY_SCORE_MODERATE = float(os.getenv("SEVERITY_SCORE_MODERATE", "0.42"))
+    except ValueError:
+        SEVERITY_SCORE_MODERATE = 0.42
+
+    # Phase 12 — before/after SSIM verification thresholds
+    try:
+        VERIFICATION_SSIM_VERIFIED_MAX = float(
+            os.getenv("VERIFICATION_SSIM_VERIFIED_MAX", "0.60")
+        )
+    except ValueError:
+        VERIFICATION_SSIM_VERIFIED_MAX = 0.60
+    try:
+        VERIFICATION_SSIM_PARTIAL_MAX = float(
+            os.getenv("VERIFICATION_SSIM_PARTIAL_MAX", "0.85")
+        )
+    except ValueError:
+        VERIFICATION_SSIM_PARTIAL_MAX = 0.85
+
+    # Phase 13 — report export output directory
+    REPORTS_OUTPUT_ROOT = Path(
+        os.getenv(
+            "REPORTS_OUTPUT_ROOT",
+            str(APP_DIR / "instance" / "generated_reports"),
+        )
+    )
+
+    # Phase 14 — security, logging, rate limits (offline-safe defaults)
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    LOG_DIR = Path(os.getenv("LOG_DIR", str(APP_DIR / "instance" / "logs")))
+    AUDIT_LOG_DIR = Path(os.getenv("AUDIT_LOG_DIR", str(LOG_DIR)))
+    try:
+        LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", "2000000"))
+    except ValueError:
+        LOG_MAX_BYTES = 2_000_000
+    try:
+        LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+    except ValueError:
+        LOG_BACKUP_COUNT = 5
+
+    RATELIMIT_ENABLED = os.getenv("RATELIMIT_ENABLED", "true").lower() == "true"
+    RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
+    RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "100 per hour;20 per minute")
+    RATELIMIT_API_SENSITIVE = os.getenv(
+        "RATELIMIT_API_SENSITIVE", "30 per minute;200 per hour"
+    )
+    SECURITY_HEADERS_ENABLED = (
+        os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() == "true"
+    )
+    OFFLINE_MODE = os.getenv("OFFLINE_MODE", "false").lower() == "true"

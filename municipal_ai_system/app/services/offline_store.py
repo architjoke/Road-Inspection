@@ -99,6 +99,10 @@ class OfflineStore:
             inspection.media_items.append(media)
             return deepcopy(media)
 
+    def list_inspections(self) -> list[OfflineInspection]:
+        with self._lock:
+            return [deepcopy(item) for item in self._inspections.values()]
+
     def get_inspection(self, inspection_id: int) -> OfflineInspection | None:
         with self._lock:
             item = self._inspections.get(inspection_id)

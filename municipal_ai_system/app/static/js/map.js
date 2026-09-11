@@ -20,10 +20,14 @@
         scrollWheelZoom: true,
     }).setView([20.5937, 78.9629], 5);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors",
-    }).addTo(map);
+    });
+    tiles.on("tileerror", () => {
+        setStatus("Map tiles unavailable (offline / blocked network). Markers still work.");
+    });
+    tiles.addTo(map);
 
     const clusterGroup = L.markerClusterGroup({
         showCoverageOnHover: false,
@@ -34,6 +38,8 @@
     let wardLayer = null;
     let clickLatLng = null;
     let clickMarker = null;
+    let radiusCircle = null;
+    let highlightMarker = null;
 
     const setStatus = (message) => {
         if (statusEl) {
@@ -48,22 +54,44 @@
         return severityColors[String(severity).toUpperCase()] || "#2563eb";
     };
 
+    const escapeHtml = (value) =>
+        String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;");
+
     const popupHtml = (props) => {
         const address = props.address || props.location_name || "—";
+        const thumb = props.thumbnail_url
+            ? `<div class="map-popup-thumb"><img src="${escapeHtml(props.thumbnail_url)}" alt="capture"></div>`
+            : "";
+        const reviewLink = props.inspection_id
+            ? `<a href="/detections">Open detection review</a>`
+            : "";
         const rows = [
             ["Inspection", props.inspection_code || props.inspection_id || "—"],
             ["Address", address],
             ["Damage", props.damage_type || "—"],
             ["Severity", props.severity || "—"],
             ["Priority", props.priority || "—"],
+            ["Action", props.recommended_action || "—"],
             ["Ward", props.ward_name || "—"],
             ["Status", props.status || "—"],
             ["Time", props.timestamp || "—"],
         ];
 
-        return rows
-            .map(([label, value]) => `<strong>${label}:</strong> ${value}<br>`)
-            .join("");
+        return (
+            thumb +
+            rows
+                .map(
+                    ([label, value]) =>
+                        `<strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}<br>`
+                )
+                .join("") +
+            (reviewLink ? `<div class="mt-2">${reviewLink}</div>` : "") +
+            `<div class="small text-muted mt-1">Relative depth is never shown as metric.</div>`
+        );
     };
 
     const buildCircle = (feature) => {
@@ -84,10 +112,11 @@
         });
 
         marker.bindPopup(popupHtml(props));
+        marker._roadProps = props;
         return marker;
     };
 
-    const renderFeatures = (collection) => {
+    const renderFeatures = (collection, options = {}) => {
         clusterGroup.clearLayers();
         const features = (collection && collection.features) || [];
         const bounds = [];
@@ -105,11 +134,25 @@
             bounds.push([ll.lat, ll.lng]);
         });
 
-        if (bounds.length) {
+        if (options.focusLat != null && options.focusLng != null) {
+            map.setView([options.focusLat, options.focusLng], options.zoom || 17);
+            if (highlightMarker) {
+                map.removeLayer(highlightMarker);
+            }
+            highlightMarker = L.circleMarker([options.focusLat, options.focusLng], {
+                radius: 14,
+                color: "#111827",
+                weight: 2,
+                fillColor: "#fbbf24",
+                fillOpacity: 0.35,
+            }).addTo(map);
+        } else if (bounds.length && !options.skipFit) {
             map.fitBounds(bounds, { padding: [36, 36], maxZoom: 16 });
         }
 
-        setStatus(`${features.length} map feature(s) loaded`);
+        const mode = collection && collection.mode ? ` [${collection.mode}]` : "";
+        setStatus(`${features.length} map feature(s) loaded${mode}`);
+        return features;
     };
 
     const toQuery = (filters = {}) => {
@@ -129,7 +172,7 @@
         return qs ? `${geojsonUrl}?${qs}` : geojsonUrl;
     };
 
-    const loadFeatures = async (filters = {}) => {
+    const loadFeatures = async (filters = {}, options = {}) => {
         setStatus("Loading map data…");
         try {
             const response = await fetch(toQuery(filters), {
@@ -140,10 +183,53 @@
                 throw new Error(`GeoJSON HTTP ${response.status}`);
             }
             const data = await response.json();
-            renderFeatures(data);
+            renderFeatures(data, options);
+            return data;
         } catch (error) {
             console.error(error);
             setStatus("Could not load map data. Check API / login session.");
+            return null;
+        }
+    };
+
+    const plotFeature = (feature, { pan = true } = {}) => {
+        if (!feature || feature.geometry?.type !== "Point") {
+            return null;
+        }
+        const marker = buildCircle(feature);
+        if (!marker) {
+            return null;
+        }
+        clusterGroup.addLayer(marker);
+        const ll = marker.getLatLng();
+        if (pan) {
+            map.setView(ll, 17);
+            marker.openPopup();
+        }
+        setStatus("Plotted latest capture on map");
+        return marker;
+    };
+
+    const consumeLatestCaptureFocus = async () => {
+        try {
+            const raw = sessionStorage.getItem("roadInspectionLatestCapture");
+            if (!raw) {
+                return;
+            }
+            sessionStorage.removeItem("roadInspectionLatestCapture");
+            const latest = JSON.parse(raw);
+            const lat = Number(latest.lat);
+            const lng = Number(latest.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                return;
+            }
+            await loadFeatures({}, { focusLat: lat, focusLng: lng, zoom: 17, skipFit: true });
+            setStatus(
+                `Focused latest capture @ ${lat.toFixed(5)}, ${lng.toFixed(5)}` +
+                    (latest.severity ? ` (${latest.severity})` : "")
+            );
+        } catch (error) {
+            console.warn("Could not focus latest capture", error);
         }
     };
 
@@ -180,7 +266,11 @@
                 },
             }).addTo(map);
 
-            setStatus("Ward boundaries visible");
+            if (!(data.features || []).length) {
+                setStatus(data.note || "No ward boundaries available offline");
+            } else {
+                setStatus("Ward boundaries visible");
+            }
         } catch (error) {
             console.error(error);
             setStatus("Ward boundaries could not be loaded");
@@ -205,13 +295,18 @@
                 credentials: "same-origin",
             });
             const data = await response.json();
-            renderFeatures(data);
-            L.circle(clickLatLng, {
+            renderFeatures(data, { skipFit: true });
+            if (radiusCircle) {
+                map.removeLayer(radiusCircle);
+            }
+            radiusCircle = L.circle(clickLatLng, {
                 radius: Number(radiusMeters) || 250,
                 color: "#0f766e",
                 weight: 1,
                 fillOpacity: 0.08,
             }).addTo(map);
+            const mode = data.mode ? ` (${data.mode})` : "";
+            setStatus(`${(data.features || []).length} nearby feature(s)${mode}`);
         } catch (error) {
             console.error(error);
             setStatus("Radius search failed");
@@ -233,8 +328,10 @@
         loadFeatures,
         radiusSearch,
         toggleWardBoundaries,
+        plotFeature,
+        map,
     };
 
-    loadFeatures();
+    loadFeatures().then(() => consumeLatestCaptureFocus());
     setTimeout(() => map.invalidateSize(), 200);
 })();

@@ -26,6 +26,7 @@ from app.ai.segmentation import (
     segment,
     serialize_segmentation_for_json,
 )
+from app.ai.severity_engine import enrich_detections as severity_enrich, summarize_severities
 from app.ai.yolo_inference import DetectionError, detect_image
 from app.services.detection_service import persist_detections
 from app.utils.status_constants import (
@@ -250,6 +251,35 @@ def _analyze_still_image(path: Path, frame_number: int | None = None) -> dict:
     if depth_section.get("error"):
         errors.append(f"depth: {depth_section['error']}")
 
+    # Phase 10 — final severity pass (never drops detections)
+    severity_summary = None
+    try:
+        union_pct = seg_section.get("union_damaged_area_percentage")
+        detections = severity_enrich(
+            detections,
+            union_damaged_area_percentage=union_pct,
+        )
+        severity_summary = summarize_severities(detections)
+    except Exception as exc:
+        logger.exception("Severity engine failed; preserving detections")
+        errors.append(f"severity: {exc}")
+        severity_summary = {
+            "level": None,
+            "priority": None,
+            "score": None,
+            "recommended_action": None,
+            "repair_type": None,
+            "manual_review_required": True,
+            "error": str(exc),
+            "evidence": {
+                "detection": True,
+                "segmentation": bool(seg_section.get("available")),
+                "relative_depth": bool(depth_section.get("available")),
+                "metric_depth": False,
+                "fallback_used": True,
+            },
+        }
+
     annotated_path = annotate_detections(
         path,
         detections,
@@ -259,6 +289,7 @@ def _analyze_still_image(path: Path, frame_number: int | None = None) -> dict:
         "detections": detections,
         "segmentation": seg_section,
         "depth": depth_section,
+        "severity": severity_summary,
         "annotated_path": annotated_path,
         "errors": errors,
     }
@@ -336,6 +367,7 @@ def analyze_inspection_job(
             "error": None,
         }
         pipeline_errors: list[str] = []
+        severity_section = None
 
         if media.media_type == "video":
             if local_path is None:
@@ -356,6 +388,7 @@ def analyze_inspection_job(
                     # Keep last frame's optional sections for summary
                     segmentation_section = frame_result["segmentation"]
                     depth_section = frame_result["depth"]
+                    severity_section = frame_result.get("severity")
                     progress = 30.0 + (50.0 * (idx + 1) / max(len(selected), 1))
                     task_store.update(task_id, progress=progress)
                 if selected:
@@ -365,6 +398,10 @@ def analyze_inspection_job(
                         Path(local_path).parent
                         / f"{Path(local_path).stem}_annotated_frame0.jpg",
                     )
+                try:
+                    severity_section = summarize_severities(all_detections)
+                except Exception as exc:
+                    pipeline_errors.append(f"severity: {exc}")
         else:
             if local_path is None:
                 raise RuntimeError(
@@ -375,6 +412,7 @@ def analyze_inspection_job(
             all_detections = still["detections"]
             segmentation_section = still["segmentation"]
             depth_section = still["depth"]
+            severity_section = still.get("severity")
             annotated_path = still["annotated_path"]
             pipeline_errors = still.get("errors") or []
             task_store.update(task_id, progress=70.0)
@@ -408,6 +446,7 @@ def analyze_inspection_job(
             "detections": all_detections,
             "segmentation": segmentation_section,
             "depth": depth_section,
+            "severity": severity_section,
             "errors": pipeline_errors,
         }
         return summary

@@ -126,9 +126,12 @@ def test_health_starts_without_remote_database():
     response = client.get("/health")
     assert response.status_code == 200
     body = response.get_json()
-    assert body["status"] == "ok"
+    assert body["status"] in {"ok", "degraded"}
     assert body["database_configured"] is False
     assert body.get("offline_mode") is True
+    assert body.get("rds_contacted") is False
+    assert "phase_14" in body.get("phase", "")
+    assert "components" in body
 
 
 def test_e2e_upload_analyze_poll_result_mock(fixture_image, monkeypatch):

@@ -1,4 +1,5 @@
-"""Detection review placeholder routes (Phase 8+)."""
+"""Detection review routes note.
 
-# Detection review UI remains on protected.detections placeholder for now.
-# Analysis APIs are under /api/analysis/* and /api/tasks/*.
+Phase 10 review UI: protected.detections → templates/detections/review.html
+JSON: GET /api/detections and GET /api/detections/<id>
+"""

@@ -42,13 +42,18 @@ def wards():
 @roles_required(
     "super_admin",
     "municipal_admin",
-    "field_officer"
+    "field_officer",
 )
 def detections():
+    from app.services.detection_review_service import list_detections_for_review
+
+    payload = list_detections_for_review()
     return render_template(
-        "placeholder.html",
-        page_title="AI Detections",
-        message="YOLO detection review will be implemented after Phase 4."
+        "detections/review.html",
+        page_title="AI Detection Review",
+        detections=payload.get("detections") or [],
+        persistence_mode=payload.get("persistence_mode"),
+        note=payload.get("note"),
     )
 
 
@@ -83,7 +88,7 @@ def map_view():
     return render_template(
         "map/index.html",
         wards=wards,
-        geojson_url="/api/inspections/geojson",
+        geojson_url="/api/map/detections",
         wards_url="/api/wards/boundaries",
         radius_url="/api/inspections/radius",
     )
@@ -97,10 +102,15 @@ def map_view():
     "viewer"
 )
 def reports():
+    from app.services.offline_store import offline_mode_enabled, offline_store
+
+    inspections = []
+    if offline_mode_enabled():
+        inspections = offline_store.list_inspections()
+        inspections = sorted(inspections, key=lambda r: r.id, reverse=True)[:25]
     return render_template(
-        "placeholder.html",
-        page_title="Reports",
-        message="PDF, CSV, and JSON reports will be implemented later."
+        "reports/list.html",
+        inspections=inspections,
     )
 
 

@@ -122,9 +122,10 @@ def identity_from_user(user_row):
     if user_row is None:
         return None
     role_name, permissions = _role_for_user(user_row)
+    pk = getattr(user_row, "id", None) or getattr(user_row, "user_id", None)
     return UserIdentity(
         kind=KIND_USER,
-        pk=getattr(user_row, "user_id", None) or getattr(user_row, "id", None),
+        pk=pk,
         username=user_row.username,
         email=user_row.email,
         full_name=user_row.full_name,
@@ -133,7 +134,11 @@ def identity_from_user(user_row):
         ward_id=getattr(user_row, "ward_id", None),
         role_id=getattr(user_row, "role_id", None),
         is_active=user_row.is_active,
-        municipality_ids=[user_row.municipality_id] if getattr(user_row, "municipality_id", None) else [],
+        municipality_ids=(
+            [user_row.municipality_id]
+            if getattr(user_row, "municipality_id", None)
+            else []
+        ),
         permissions=permissions,
     )
 
@@ -158,7 +163,7 @@ def identity_from_super_admin(admin_row):
 
     return UserIdentity(
         kind=KIND_SUPER_ADMIN,
-        pk=admin_row.super_admin_id,
+        pk=getattr(admin_row, "super_admin_id", None) or getattr(admin_row, "id", None),
         username=admin_row.username,
         email=admin_row.email,
         full_name=admin_row.full_name,

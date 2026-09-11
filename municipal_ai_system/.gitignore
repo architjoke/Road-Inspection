@@ -1,6 +1,13 @@
+@"
+.env
+.vscode/
+.idea/
 venv/
+.venv/
 __pycache__/
 *.pyc
-.env
-instance/
+*.pyo
+*.pyd
 .DS_Store
+municipal_ai_system/app/instance/temp/inspections/
+"@ | Set-Content -Path .gitignore -Encoding utf8

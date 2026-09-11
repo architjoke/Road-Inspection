@@ -45,8 +45,18 @@ def _table_key(table_name: str) -> Optional[str]:
     return None
 
 
+def _explicit_models_map() -> dict[str, type]:
+    """Lazy import to avoid circular imports at module load time."""
+    from app.models import EXPLICIT_MODELS
+
+    return EXPLICIT_MODELS
+
+
 def _clear_reflected_metadata() -> None:
+    """Remove only dynamically reflected tables; keep declarative metadata."""
     for table_name in TABLE_NAMES:
+        if table_name in EXPLICIT_ORM_TABLES:
+            continue
         for key in (f'public.{table_name}', table_name):
             if key in db.metadata.tables:
                 db.metadata.remove(db.metadata.tables[key])
@@ -56,6 +66,7 @@ def reflect_models(force: bool = False) -> dict[str, type]:
     """
     Reflect existing DBeaver/RDS tables into SQLAlchemy ORM classes.
     Does not create or alter database objects.
+    Skips tables that already have declarative models in app.models.*.
     """
     global _reflected
 
@@ -73,17 +84,20 @@ def reflect_models(force: bool = False) -> dict[str, type]:
 
     _configure_postgis_reflection()
 
+    explicit_models = _explicit_models_map()
     reflect_only = [
-        name for name in TABLE_NAMES if name not in EXPLICIT_ORM_TABLES
+        name for name in TABLE_NAMES
+        if name not in EXPLICIT_ORM_TABLES and name not in explicit_models
     ]
 
-    db.metadata.reflect(
-        bind=db.engine,
-        schema='public',
-        only=reflect_only,
-        extend_existing=True,
-        views=False,
-    )
+    if reflect_only:
+        db.metadata.reflect(
+            bind=db.engine,
+            schema='public',
+            only=reflect_only,
+            extend_existing=True,
+            views=False,
+        )
 
     reflected_tables = {
         name for name in TABLE_NAMES if _table_key(name) is not None
@@ -93,13 +107,33 @@ def reflect_models(force: bool = False) -> dict[str, type]:
         logger.warning('Missing tables during reflection: %s', ', '.join(missing_tables))
 
     ModelRegistry.clear()
+
+    # Prefer declarative classes — never create a second registry entry for them.
+    for table_name, model_class in explicit_models.items():
+        ModelRegistry[table_name] = model_class
+
     for table_name in TABLE_NAMES:
+        if table_name in EXPLICIT_ORM_TABLES or table_name in explicit_models:
+            continue
+        if table_name in ModelRegistry:
+            continue
+
         key = _table_key(table_name)
         if key is None:
             continue
 
         table = db.metadata.tables[key]
         class_name = _class_name_for_table(table_name)
+
+        # Extra guard: class name already used by an explicit model
+        if any(cls.__name__ == class_name for cls in explicit_models.values()):
+            logger.warning(
+                'Skipping dynamic model for table %s; class %s already exists.',
+                table_name,
+                class_name,
+            )
+            continue
+
         model_class = type(
             class_name,
             (db.Model,),
@@ -120,12 +154,19 @@ def reflect_models(force: bool = False) -> dict[str, type]:
         return ModelRegistry
 
     _reflected = True
-    logger.info('Reflected %d ORM models from existing database schema.', len(ModelRegistry))
+    logger.info(
+        'ORM ready: %d explicit + %d reflected models.',
+        len(explicit_models),
+        len(ModelRegistry) - len(explicit_models),
+    )
     return ModelRegistry
 
 
 def get_model(table_name: str) -> Optional[type]:
-    return ModelRegistry.get(table_name)
+    if table_name in ModelRegistry:
+        return ModelRegistry.get(table_name)
+    explicit = _explicit_models_map()
+    return explicit.get(table_name)
 
 
 def get_reflection_status() -> dict:
@@ -195,4 +236,5 @@ def get_reflection_status() -> dict:
         'postgis_enabled': postgis_enabled,
         'spatial_indexes': spatial_indexes,
         'models_loaded': len(ModelRegistry),
+        'explicit_orm_tables': sorted(EXPLICIT_ORM_TABLES),
     }

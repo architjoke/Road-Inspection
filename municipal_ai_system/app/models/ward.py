@@ -1,6 +1,7 @@
 from geoalchemy2 import Geometry
 
 from app.extensions import db
+from app.models.municipality import Municipality
 
 
 class Ward(db.Model):
@@ -42,7 +43,7 @@ class Ward(db.Model):
     updated_at = db.Column(db.DateTime, nullable=True)
 
     municipality = db.relationship(
-        "Municipality",
+        Municipality,
         backref=db.backref("wards", lazy=True)
     )
 

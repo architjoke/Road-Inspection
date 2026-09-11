@@ -1,6 +1,7 @@
 from geoalchemy2 import Geometry
 
 from app.extensions import db
+from app.models.inspection_media import InspectionMedia
 
 
 class Inspection(db.Model):
@@ -28,7 +29,7 @@ class Inspection(db.Model):
 
     user_id = db.Column(
         db.Integer,
-        db.ForeignKey("users.user_id"),
+        db.ForeignKey("users.id"),
         nullable=False
     )
 
@@ -111,11 +112,11 @@ class Inspection(db.Model):
     )
 
     media_items = db.relationship(
-        "InspectionMedia",
+        InspectionMedia,
         backref="inspection",
         lazy=True,
         cascade="all, delete-orphan",
-        order_by="InspectionMedia.id.desc()"
+        order_by=InspectionMedia.id.desc(),
     )
 
     def __repr__(self) -> str:

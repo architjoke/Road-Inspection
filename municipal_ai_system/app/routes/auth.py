@@ -1,3 +1,11 @@
+"""
+Legacy / alternate auth blueprint (Shreya earlier draft).
+
+NOT registered by create_app(). Phase-3 login lives in app.auth
+(LoginForm + UserIdentity + authenticate). Keep this file for reference
+only — registering it would conflict with Blueprint name "auth".
+"""
+
 from urllib.parse import urljoin, urlparse
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -7,7 +15,7 @@ from app.extensions import db
 from app.models.user import User
 
 
-auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
+auth_bp = Blueprint("legacy_auth_unused", __name__, url_prefix="/legacy-auth")
 
 
 def is_safe_redirect_url(target: str) -> bool:

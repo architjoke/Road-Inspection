@@ -1,6 +1,5 @@
 from flask import Flask, jsonify, redirect, render_template, url_for
 from flask_login import current_user
-from dotenv import load_dotenv
 from pathlib import Path
 import logging
 
@@ -8,25 +7,41 @@ from app.config import Config
 from app.extensions import csrf, db, limiter, login_manager
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env')
 
 logger = logging.getLogger(__name__)
+
+
+def _database_configured(app: Flask) -> bool:
+    uri = (app.config.get("SQLALCHEMY_DATABASE_URI") or "").strip()
+    if not uri:
+        return False
+    # Treat unedited .env.example placeholders as "not configured"
+    placeholders = ("USERNAME:PASSWORD", "YOUR-RDS-HOST", "YOUR_HOST", "change-me")
+    return not any(token in uri for token in placeholders)
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
-        logger.warning("DATABASE_URL is not set; database features are disabled.")
+    db_ok = _database_configured(app)
+    app.config["DATABASE_CONFIGURED"] = db_ok
 
+    if not db_ok:
+        logger.error(
+            "DATABASE_URL is missing or still a placeholder. "
+            "Edit municipal_ai_system/.env (copied from .env.example if needed), "
+            "set a real DATABASE_URL, then restart the app. "
+            "Login will not work until the database is configured."
+        )
+
+    # Always register extensions — never skip db.init_app
     csrf.init_app(app)
     limiter.init_app(app)
     login_manager.init_app(app)
+    db.init_app(app)
 
-    if app.config.get("SQLALCHEMY_DATABASE_URI"):
-        db.init_app(app)
-
+    if db_ok:
         with app.app_context():
             from app.models import reflect_models
 
@@ -50,7 +65,7 @@ def create_app():
             {
                 "status": "ok",
                 "application": "AI Road Inspection System",
-                "database_configured": bool(app.config.get("SQLALCHEMY_DATABASE_URI")),
+                "database_configured": bool(app.config.get("DATABASE_CONFIGURED")),
                 "phase": "phase_3_merged",
             }
         ), 200
@@ -80,13 +95,18 @@ def create_app():
 
     @app.errorhandler(500)
     def internal_error(_error):
-        db.session.rollback()
+        if app.config.get("DATABASE_CONFIGURED"):
+            try:
+                db.session.rollback()
+            except Exception:
+                logger.exception("Failed to roll back DB session after 500 error")
         return render_template(
             "errors/500.html",
             error_title="System Error",
             error_message="An unexpected error occurred. Please try again.",
         ), 500
 
+    # Phase-3 auth from app.auth (not app.routes.auth)
     from app.auth import auth_bp
     from app.routes import dashboard_bp, inspections_bp, protected_bp
 

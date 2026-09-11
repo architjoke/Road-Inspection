@@ -1,4 +1,5 @@
 <aside class="app-sidebar">
+    {% set role = current_user.dashboard_role_key if current_user.dashboard_role_key is defined else (current_user.role_name or '')|lower|replace(' ', '_') %}
     <div class="sidebar-role">
         <span class="sidebar-role-label">Signed in as</span>
         <strong>{{ current_user.display_role_name }}</strong>
@@ -11,7 +12,7 @@
             Dashboard
         </a>
 
-        {% if current_user.role_name == "super_admin" %}
+        {% if role == "super_admin" %}
         <a class="nav-link" href="{{ url_for('protected.users') }}">
             <i class="fa-solid fa-users"></i>
             User Management
@@ -57,7 +58,7 @@
             System Settings
         </a>
 
-        {% elif current_user.role_name == "municipal_admin" %}
+        {% elif role in ("municipal_admin", "administrator") %}
         <a class="nav-link" href="{{ url_for('protected.users') }}">
             <i class="fa-solid fa-users"></i>
             Users
@@ -93,7 +94,7 @@
             Reports
         </a>
 
-        {% elif current_user.role_name == "field_officer" %}
+        {% elif role == "field_officer" %}
         <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
             <i class="fa-solid fa-clipboard-check"></i>
             Inspections
@@ -124,7 +125,7 @@
             Reports
         </a>
 
-        {% elif current_user.role_name == "field_worker" %}
+        {% elif role == "field_worker" %}
         <a class="nav-link" href="{{ url_for('inspections.new') }}">
             <i class="fa-solid fa-circle-plus"></i>
             New Inspection
@@ -140,7 +141,7 @@
             Uploaded Media
         </a>
 
-        {% elif current_user.role_name == "contractor" %}
+        {% elif role == "contractor" %}
         <a class="nav-link" href="{{ url_for('protected.repairs') }}">
             <i class="fa-solid fa-list-check"></i>
             My Repair Tasks
@@ -161,7 +162,7 @@
             Repair History
         </a>
 
-        {% elif current_user.role_name == "viewer" %}
+        {% elif role == "viewer" %}
         <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
             <i class="fa-solid fa-clipboard-check"></i>
             Inspections
@@ -186,6 +187,7 @@
         </a>
 
         <form method="POST" action="{{ url_for('auth.logout') }}" class="sidebar-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="nav-link sidebar-logout-button" type="submit">
                 <i class="fa-solid fa-right-from-bracket"></i>
                 Logout

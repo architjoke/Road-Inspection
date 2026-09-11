@@ -18,7 +18,8 @@ from app.extensions import db
 from app.models.inspection import Inspection
 from app.models.inspection_media import InspectionMedia
 from app.services.inspection_service import create_inspection_with_media
-from app.utils.file_validation import validate_upload
+from app.services.validation_service import validate_upload
+from app.services.ward_service import list_wards_for_municipality
 
 
 inspections_bp = Blueprint(
@@ -68,15 +69,13 @@ def new():
     if request.method == "POST":
         uploaded_file = request.files.get("media_file")
 
-        is_valid, error_message = validate_upload(
-            uploaded_file,
-            current_app.config["ALLOWED_IMAGE_EXTENSIONS"],
-            current_app.config["ALLOWED_VIDEO_EXTENSIONS"]
-        )
-
-        if not is_valid:
-            flash(error_message, "danger")
+        validation = validate_upload(uploaded_file)
+        if not validation.get("valid"):
+            flash(validation.get("error", "Invalid upload."), "danger")
             return render_template("inspections/new.html")
+
+        for warning in validation.get("warnings") or []:
+            flash(warning, "warning")
 
         try:
             inspection = create_inspection_with_media(
@@ -85,10 +84,19 @@ def new():
                 uploaded_file=uploaded_file
             )
 
+            media = inspection.media_items[0] if inspection.media_items else None
+            image_url = (media.cdn_url or media.file_path) if media else None
             flash(
-                f"Inspection {inspection.inspection_code} was submitted successfully.",
+                (
+                    f"Inspection {inspection.inspection_code} submitted. "
+                    f"GPS: {inspection.location_latitude}, "
+                    f"{inspection.location_longitude}. "
+                    f"{'ImageKit URL saved.' if media and media.cdn_url else 'Media stored locally.'}"
+                ),
                 "success"
             )
+            if image_url and media and media.cdn_url:
+                flash(f"Media URL: {image_url}", "info")
 
             return redirect(
                 url_for(
@@ -154,10 +162,14 @@ def list_all():
         )
 
     inspections = query.order_by(Inspection.id.desc()).all()
+    wards = list_wards_for_municipality(
+        None if _is_super_admin(current_user) else current_user.municipality_id
+    )
 
     return render_template(
         "inspections/list.html",
-        inspections=inspections
+        inspections=inspections,
+        wards=wards,
     )
 
 
@@ -183,6 +195,13 @@ def view_media(media_id: int):
 
     if not can_view_inspection(inspection):
         abort(403)
+
+    # Prefer ImageKit CDN when available
+    if media.cdn_url and str(media.cdn_url).startswith("http"):
+        return redirect(media.cdn_url)
+
+    if media.file_path and str(media.file_path).startswith("http"):
+        return redirect(media.file_path)
 
     file_path = Path(media.file_path)
 

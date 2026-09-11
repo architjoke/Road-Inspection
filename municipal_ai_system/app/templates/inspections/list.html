@@ -3,50 +3,67 @@
 {% block title %}Inspections{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header" x-data="{ query: '', status: '' }">
     <div>
         <p class="page-kicker">Municipal inspection records</p>
         <h1>Inspections</h1>
         <p class="text-muted mb-0">
-            View inspections available to your role.
+            Sortable list with live client-side filtering.
         </p>
     </div>
 </div>
 
-<div class="content-card">
+<div class="content-card" x-data="inspectionListFilter()">
+    <div class="p-3 border-bottom">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label" for="inspection-search">Search</label>
+                <input id="inspection-search" type="search" class="form-control" placeholder="Code, location, status…"
+                    x-model="query">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="status-filter">Status</label>
+                <select id="status-filter" class="form-select" x-model="status">
+                    <option value="">All statuses</option>
+                    <template x-for="item in statuses" :key="item">
+                        <option :value="item" x-text="item.replaceAll('_', ' ')"></option>
+                    </template>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-secondary w-100" @click="query=''; status=''">
+                    Clear
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="table-responsive">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0" id="inspections-table">
             <thead>
                 <tr>
-                    <th>Inspection Code</th>
-                    <th>Road / Location</th>
-                    <th>Submitted</th>
-                    <th>Status</th>
+                    <th role="button" @click="sortBy('code')">Inspection Code</th>
+                    <th role="button" @click="sortBy('location')">Road / Location</th>
+                    <th role="button" @click="sortBy('date')">Submitted</th>
+                    <th role="button" @click="sortBy('status')">Status</th>
                     <th></th>
                 </tr>
             </thead>
-
             <tbody>
                 {% for inspection in inspections %}
-                <tr>
-                    <td class="fw-semibold">
-                        {{ inspection.inspection_code }}
-                    </td>
-
-                    <td>
-                        {{ inspection.location_name or "Not provided" }}
-                    </td>
-
-                    <td>
-                        {{ inspection.inspection_date.strftime("%d %b %Y, %I:%M %p") }}
-                    </td>
-
+                <tr data-code="{{ inspection.inspection_code|lower }}"
+                    data-location="{{ (inspection.location_name or '')|lower }}"
+                    data-status="{{ inspection.status }}"
+                    data-date="{{ inspection.inspection_date.isoformat() if inspection.inspection_date else '' }}"
+                    x-show="matches($el)" x-cloak>
+                    <td class="fw-semibold">{{ inspection.inspection_code }}</td>
+                    <td>{{ inspection.location_name or "Not provided" }}</td>
+                    <td>{{ inspection.inspection_date.strftime("%d %b %Y, %I:%M %p") }}</td>
                     <td>
                         <span class="badge text-bg-warning">
                             {{ inspection.status.replace("_", " ").title() }}
                         </span>
                     </td>
-
                     <td class="text-end">
                         <a class="btn btn-sm btn-outline-primary"
                             href="{{ url_for('inspections.detail', inspection_id=inspection.id) }}">
@@ -65,4 +82,42 @@
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block page_js %}
+<script>
+    function inspectionListFilter() {
+        return {
+            query: '',
+            status: '',
+            statuses: [...new Set([...document.querySelectorAll('#inspections-table tbody tr[data-status]')].map(r => r.dataset.status).filter(Boolean))],
+            sortKey: 'date',
+            sortDir: 'desc',
+            matches(el) {
+                const q = this.query.trim().toLowerCase();
+                const hay = `${el.dataset.code || ''} ${el.dataset.location || ''} ${el.dataset.status || ''}`;
+                const statusOk = !this.status || el.dataset.status === this.status;
+                return statusOk && (!q || hay.includes(q));
+            },
+            sortBy(key) {
+                if (this.sortKey === key) {
+                    this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.sortKey = key;
+                    this.sortDir = 'asc';
+                }
+                const tbody = document.querySelector('#inspections-table tbody');
+                const rows = [...tbody.querySelectorAll('tr[data-code]')];
+                rows.sort((a, b) => {
+                    const av = a.dataset[key === 'code' ? 'code' : key === 'location' ? 'location' : key === 'status' ? 'status' : 'date'] || '';
+                    const bv = b.dataset[key === 'code' ? 'code' : key === 'location' ? 'location' : key === 'status' ? 'status' : 'date'] || '';
+                    if (av < bv) return this.sortDir === 'asc' ? -1 : 1;
+                    if (av > bv) return this.sortDir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+                rows.forEach(row => tbody.appendChild(row));
+            }
+        };
+    }
+</script>
 {% endblock %}

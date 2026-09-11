@@ -55,7 +55,12 @@ class Config:
     AUTH_MAX_FAILED_ATTEMPTS = int(os.getenv("AUTH_MAX_FAILED_ATTEMPTS", "5"))
     AUTH_LOCKOUT_MINUTES = int(os.getenv("AUTH_LOCKOUT_MINUTES", "15"))
 
-    MAX_CONTENT_LENGTH = 100 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 500 * 1024 * 1024
     ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
     ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov"}
     TEMP_UPLOAD_ROOT = APP_DIR / "instance" / "temp" / "inspections"
+
+    # ImageKit CDN (Phase 5) — not MinIO/S3
+    IMAGEKIT_PUBLIC_KEY = os.getenv("IMAGEKIT_PUBLIC_KEY", "")
+    IMAGEKIT_PRIVATE_KEY = os.getenv("IMAGEKIT_PRIVATE_KEY", "")
+    IMAGEKIT_URL_ENDPOINT = os.getenv("IMAGEKIT_URL_ENDPOINT", "")

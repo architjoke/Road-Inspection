@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Repair Verification{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/repairs.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Work verification</p>
+        <h1>Repair Manager</h1>
+        <p class="text-muted mb-0">
+            Before/after comparison workspace for repair evidence review.
+        </p>
+    </div>
+</div>
+
+<div class="content-card" x-data="repairManager()">
+    <div class="content-card-header">
+        <div>
+            <h2>Before / After Comparison</h2>
+            <p>Upload or pick before and after images to visually verify repair quality.</p>
+        </div>
+    </div>
+
+    <div class="p-4">
+        <div class="row g-4">
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">Before repair</label>
+                <input type="file" accept="image/*" class="form-control" @change="setBefore($event)">
+                <div class="repair-compare-frame mt-3">
+                    <template x-if="beforeUrl">
+                        <img :src="beforeUrl" alt="Before repair">
+                    </template>
+                    <template x-if="!beforeUrl">
+                        <div class="repair-placeholder">Before image preview</div>
+                    </template>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold">After repair</label>
+                <input type="file" accept="image/*" class="form-control" @change="setAfter($event)">
+                <div class="repair-compare-frame mt-3">
+                    <template x-if="afterUrl">
+                        <img :src="afterUrl" alt="After repair">
+                    </template>
+                    <template x-if="!afterUrl">
+                        <div class="repair-placeholder">After image preview</div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <button type="button" class="btn btn-primary" @click="confirmVerify()"
+                :disabled="!beforeUrl || !afterUrl">
+                Mark as Verified
+            </button>
+            <button type="button" class="btn btn-outline-danger"
+                @click="confirmReject()">
+                Flag as Incomplete
+            </button>
+        </div>
+
+        <p class="text-muted small mt-3 mb-0">
+            Full repair-task assignment and AI similarity scoring arrive in later phases.
+            This screen prepares the verification UI and confirmation dialogs.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script>
+    function repairManager() {
+        return {
+            beforeUrl: '',
+            afterUrl: '',
+            setBefore(event) {
+                const file = event.target.files[0];
+                if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);
+                this.beforeUrl = file ? URL.createObjectURL(file) : '';
+            },
+            setAfter(event) {
+                const file = event.target.files[0];
+                if (this.afterUrl) URL.revokeObjectURL(this.afterUrl);
+                this.afterUrl = file ? URL.createObjectURL(file) : '';
+            },
+            confirmVerify() {
+                if (!window.confirm('Mark this repair as verified?')) return;
+                window.RoadInspectionUI?.toast('Repair marked verified (UI stub).', 'success');
+            },
+            confirmReject() {
+                if (!window.confirm('Flag this repair as incomplete?')) return;
+                window.RoadInspectionUI?.toast('Repair flagged incomplete (UI stub).', 'warning');
+            }
+        };
+    }
+</script>
+{% endblock %}

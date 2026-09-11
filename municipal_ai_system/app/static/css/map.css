@@ -1,0 +1,118 @@
+/* Leaflet GIS map layout */
+
+.map-page-header {
+    margin-bottom: 1rem;
+}
+
+.map-layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 1rem;
+    min-height: calc(100vh - 210px);
+}
+
+.map-sidebar {
+    overflow: hidden;
+}
+
+.map-filter-body {
+    max-height: calc(100vh - 280px);
+    overflow: auto;
+}
+
+.map-stage {
+    position: relative;
+    min-height: 520px;
+    overflow: hidden;
+}
+
+#inspection-map {
+    width: 100%;
+    height: 100%;
+    min-height: 520px;
+}
+
+.map-status {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 500;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #e5eaf1;
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+    color: #334155;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid #dbe3ee;
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    background: #f8fafc;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.filter-chip input {
+    margin: 0;
+}
+
+.map-legend {
+    font-size: 0.86rem;
+    color: #475569;
+}
+
+.map-legend > div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.legend-dot.severe { background: #dc2626; }
+.legend-dot.moderate { background: #ea580c; }
+.legend-dot.minor { background: #16a34a; }
+.legend-dot.unknown { background: #2563eb; }
+
+.leaflet-popup-content {
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+@media (max-width: 991.98px) {
+    .map-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .map-sidebar {
+        display: none;
+        position: fixed;
+        inset: 72px 12px auto 12px;
+        z-index: 1050;
+        max-height: 70vh;
+    }
+
+    .map-sidebar.is-open {
+        display: block;
+    }
+
+    .map-filter-body {
+        max-height: 55vh;
+    }
+
+    #inspection-map,
+    .map-stage {
+        min-height: 65vh;
+    }
+}

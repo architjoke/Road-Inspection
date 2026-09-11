@@ -12,7 +12,7 @@
         <p class="page-kicker">Field data collection</p>
         <h1>New Road Inspection</h1>
         <p class="text-muted mb-0">
-            Upload one road image/video and capture your current GPS location.
+            Upload a road image/video. GPS can come from the browser, EXIF, or manual entry.
         </p>
     </div>
 
@@ -23,7 +23,10 @@
 </div>
 
 <form id="inspection-form" method="POST" action="{{ url_for('inspections.new') }}" enctype="multipart/form-data"
-    novalidate>
+    novalidate x-data="inspectionUploadForm()" @submit="onSubmit($event)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="gps_manual_override" :value="manualOverride ? '1' : ''">
+
     <div class="row g-4">
         <div class="col-lg-7">
             <div class="content-card">
@@ -40,16 +43,12 @@
                             Road / Street / Location Name
                             <span class="text-danger">*</span>
                         </label>
-
                         <input type="text" id="location_name" name="location_name" class="form-control"
                             placeholder="Example: Main Road near Bus Stand" maxlength="255" required>
                     </div>
 
                     <div class="mb-3">
-                        <label for="weather_conditions" class="form-label">
-                            Weather Conditions
-                        </label>
-
+                        <label for="weather_conditions" class="form-label">Weather Conditions</label>
                         <select id="weather_conditions" name="weather_conditions" class="form-select">
                             <option value="">Select weather (optional)</option>
                             <option value="clear">Clear</option>
@@ -61,10 +60,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="lighting_conditions" class="form-label">
-                            Lighting Conditions
-                        </label>
-
+                        <label for="lighting_conditions" class="form-label">Lighting Conditions</label>
                         <select id="lighting_conditions" name="lighting_conditions" class="form-select">
                             <option value="">Select lighting (optional)</option>
                             <option value="daylight">Daylight</option>
@@ -75,10 +71,7 @@
                     </div>
 
                     <div class="mb-0">
-                        <label for="notes" class="form-label">
-                            Notes
-                        </label>
-
+                        <label for="notes" class="form-label">Notes / Description</label>
                         <textarea id="notes" name="notes" class="form-control" rows="4"
                             placeholder="Example: Large pothole near the left lane."></textarea>
                     </div>
@@ -89,24 +82,38 @@
                 <div class="content-card-header">
                     <div>
                         <h2>Road Image or Video</h2>
-                        <p>Allowed: JPG, JPEG, PNG, MP4, MOV. Maximum size: 100 MB.</p>
+                        <p>Allowed: JPG, JPEG, PNG, MP4, MOV. Images ≤ 50 MB, videos ≤ 500 MB.</p>
                     </div>
                 </div>
 
                 <div class="p-4">
-                    <label for="media_file" class="upload-drop-zone" id="upload-drop-zone">
+                    <label for="media_file" class="upload-drop-zone" id="upload-drop-zone"
+                        :class="{ 'drag-over': dragging }"
+                        @dragenter.prevent="dragging = true"
+                        @dragover.prevent="dragging = true"
+                        @dragleave.prevent="dragging = false"
+                        @drop.prevent="onDrop($event)">
                         <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
                         <span class="upload-title">Drag and drop a file here</span>
                         <span class="upload-subtitle">or click to browse</span>
-
                         <input type="file" id="media_file" name="media_file"
-                            accept=".jpg,.jpeg,.png,.mp4,.mov,image/jpeg,image/png,video/mp4,video/quicktime" required>
+                            accept=".jpg,.jpeg,.png,.mp4,.mov,image/jpeg,image/png,video/mp4,video/quicktime"
+                            required @change="onFileChange($event)">
                     </label>
 
-                    <div id="selected-file-info" class="selected-file-info d-none">
+                    <div id="selected-file-info" class="selected-file-info" x-show="fileName" x-cloak>
                         <i class="fa-solid fa-file me-2"></i>
-                        <span id="selected-file-name"></span>
-                        <span id="selected-file-size" class="text-muted ms-2"></span>
+                        <span x-text="fileName"></span>
+                        <span class="text-muted ms-2" x-text="fileSizeLabel"></span>
+                    </div>
+
+                    <div class="media-live-preview mt-3" x-show="previewUrl" x-cloak>
+                        <template x-if="previewKind === 'image'">
+                            <img :src="previewUrl" alt="Selected inspection media preview" class="inspection-image-preview">
+                        </template>
+                        <template x-if="previewKind === 'video'">
+                            <video :src="previewUrl" controls class="inspection-image-preview"></video>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -116,27 +123,26 @@
             <div class="content-card">
                 <div class="content-card-header">
                     <div>
-                        <h2>Current Location</h2>
-                        <p>Use browser location at the moment of inspection submission.</p>
+                        <h2>GPS Location</h2>
+                        <p>Browser GPS preferred. Manual fields appear if capture fails.</p>
                     </div>
                 </div>
 
                 <div class="p-4">
-                    <div class="gps-status-card" id="gps-status-card">
+                    <div class="gps-status-card" id="gps-status-card" :class="gpsCardClass">
                         <div class="gps-status-icon">
                             <i class="fa-solid fa-location-dot"></i>
                         </div>
-
                         <div>
-                            <strong id="gps-status-title">Location not captured</strong>
-
-                            <p id="gps-status-message">
+                            <strong id="gps-status-title" x-text="gpsTitle">Location not captured</strong>
+                            <p id="gps-status-message" x-text="gpsMessage">
                                 Click the button below and allow location permission.
                             </p>
                         </div>
                     </div>
 
-                    <button type="button" class="btn btn-outline-primary w-100 mt-3" id="capture-location-button">
+                    <button type="button" class="btn btn-outline-primary w-100 mt-3" id="capture-location-button"
+                        @click="captureLocation()">
                         <i class="fa-solid fa-location-crosshairs me-2"></i>
                         Capture Current Location
                     </button>
@@ -144,39 +150,58 @@
                     <div class="gps-values mt-4">
                         <div class="gps-value-row">
                             <span>Latitude</span>
-                            <strong id="latitude-display">—</strong>
+                            <strong id="latitude-display" x-text="latDisplay">—</strong>
                         </div>
-
                         <div class="gps-value-row">
                             <span>Longitude</span>
-                            <strong id="longitude-display">—</strong>
+                            <strong id="longitude-display" x-text="lngDisplay">—</strong>
                         </div>
-
                         <div class="gps-value-row">
                             <span>GPS Accuracy</span>
-                            <strong id="accuracy-display">—</strong>
+                            <strong id="accuracy-display" x-text="accDisplay">—</strong>
                         </div>
                     </div>
 
-                    <input type="hidden" id="location_latitude" name="location_latitude">
+                    <input type="hidden" id="location_latitude" name="location_latitude" x-model="latitude">
+                    <input type="hidden" id="location_longitude" name="location_longitude" x-model="longitude">
+                    <input type="hidden" id="gps_accuracy_meters" name="gps_accuracy_meters" x-model="accuracy">
 
-                    <input type="hidden" id="location_longitude" name="location_longitude">
-
-                    <input type="hidden" id="gps_accuracy_meters" name="gps_accuracy_meters">
-
-                    <div class="alert alert-info mt-4 mb-0">
-                        <small>
-                            <i class="fa-solid fa-circle-info me-1"></i>
-                            GPS is required for this Phase 4 inspection workflow.
-                        </small>
+                    <div class="mt-4" x-show="showManual" x-cloak>
+                        <div class="alert alert-warning">
+                            <small>
+                                Automatic GPS was unavailable. Enter coordinates manually
+                                (or submit a photo that contains EXIF GPS).
+                            </small>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label" for="manual_lat">Manual latitude</label>
+                            <input type="text" id="manual_lat" name="manual_lat" class="form-control"
+                                placeholder="27.02380000" x-model="manualLat" @input="syncManual()">
+                        </div>
+                        <div>
+                            <label class="form-label" for="manual_lng">Manual longitude</label>
+                            <input type="text" id="manual_lng" name="manual_lng" class="form-control"
+                                placeholder="79.02150000" x-model="manualLng" @input="syncManual()">
+                        </div>
                     </div>
+
+                    <button type="button" class="btn btn-link px-0 mt-2" @click="showManual = !showManual">
+                        <span x-text="showManual ? 'Hide manual GPS' : 'Enter GPS manually'"></span>
+                    </button>
                 </div>
             </div>
 
             <div class="d-grid mt-4">
-                <button type="submit" class="btn btn-primary btn-lg" id="submit-inspection-button">
-                    <i class="fa-solid fa-paper-plane me-2"></i>
-                    Submit Inspection
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-inspection-button"
+                    :disabled="submitting">
+                    <span x-show="!submitting">
+                        <i class="fa-solid fa-paper-plane me-2"></i>
+                        Submit Inspection
+                    </span>
+                    <span x-show="submitting" x-cloak>
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        Uploading…
+                    </span>
                 </button>
             </div>
         </div>

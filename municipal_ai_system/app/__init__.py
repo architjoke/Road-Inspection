@@ -66,7 +66,7 @@ def create_app():
                 "status": "ok",
                 "application": "AI Road Inspection System",
                 "database_configured": bool(app.config.get("DATABASE_CONFIGURED")),
-                "phase": "phase_3_merged",
+                "phase": "phase_4_5_frontend_storage",
             }
         ), 200
 
@@ -108,11 +108,12 @@ def create_app():
 
     # Phase-3 auth from app.auth (not app.routes.auth)
     from app.auth import auth_bp
-    from app.routes import dashboard_bp, inspections_bp, protected_bp
+    from app.routes import api_bp, dashboard_bp, inspections_bp, protected_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(inspections_bp)
     app.register_blueprint(protected_bp)
+    app.register_blueprint(api_bp)
 
     return app

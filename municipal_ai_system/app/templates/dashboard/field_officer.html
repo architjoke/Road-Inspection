@@ -5,61 +5,74 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <p class="page-kicker">Inspection review and monitoring</p>
+        <p class="page-kicker">Field operations</p>
         <h1>Field Officer Dashboard</h1>
         <p class="text-muted mb-0">
-            Review AI findings, validate severity, and monitor repair progress.
+            Review inspections, map detections, and verify repairs.
         </p>
     </div>
-
-    <a class="btn btn-primary" href="{{ url_for('protected.detections') }}">
-        <i class="fa-solid fa-magnifying-glass me-2"></i>
-        Review Detections
+    <a class="btn btn-primary" href="{{ url_for('protected.map_view') }}">
+        <i class="fa-solid fa-map me-2"></i>
+        GIS Map
     </a>
 </div>
 
-<div class="alert alert-warning border-0 shadow-sm" role="alert">
-    <div class="d-flex align-items-center gap-3">
-        <i class="fa-solid fa-triangle-exclamation fs-3"></i>
-        <div>
-            <strong>Review queue will appear here.</strong>
-            <div>AI detection review is not connected yet. It will be added after the detection pipeline is implemented.
-            </div>
+{% set cards = analytics.cards if analytics else {} %}
+<div class="row g-4 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-primary">
+            <span>Inspections</span>
+            <strong>{{ cards.total_inspections if cards.total_inspections is defined else '—' }}</strong>
+            <small>In your municipality</small>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-info">
+            <span>Detections</span>
+            <strong>{{ cards.total_detections if cards.total_detections is defined else '—' }}</strong>
+            <small>AI findings</small>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-warning">
+            <span>Last 30 days</span>
+            <strong>{{ cards.inspections_last_30_days if cards.inspections_last_30_days is defined else '—' }}</strong>
+            <small>New inspections</small>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card stat-success">
+            <span>Repairs done</span>
+            <strong>{{ cards.repairs_completed_this_month if cards.repairs_completed_this_month is defined else '—' }}</strong>
+            <small>This month</small>
         </div>
     </div>
 </div>
 
-<div class="row g-4">
-    <div class="col-sm-6 col-xl-3">
-        <div class="stat-card stat-info">
-            <span>Pending Review</span>
-            <strong>—</strong>
-            <small>AI detections awaiting validation</small>
+<div class="content-card">
+    <div class="content-card-header">
+        <div>
+            <h2>Quick Actions</h2>
+            <p>Jump into review workflows.</p>
         </div>
     </div>
-
-    <div class="col-sm-6 col-xl-3">
-        <div class="stat-card stat-danger">
-            <span>Severe Defects</span>
-            <strong>—</strong>
-            <small>Priority road issues</small>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-xl-3">
-        <div class="stat-card stat-success">
-            <span>Repairs Completed</span>
-            <strong>—</strong>
-            <small>Verified completed work</small>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-xl-3">
-        <div class="stat-card stat-warning">
-            <span>Repairs in Progress</span>
-            <strong>—</strong>
-            <small>Contractor work underway</small>
-        </div>
+    <div class="quick-actions">
+        <a class="quick-action" href="{{ url_for('inspections.list_all') }}">
+            <i class="fa-solid fa-clipboard-check"></i>
+            Inspections
+        </a>
+        <a class="quick-action" href="{{ url_for('protected.detections') }}">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            AI Detections
+        </a>
+        <a class="quick-action" href="{{ url_for('protected.repairs') }}">
+            <i class="fa-solid fa-screwdriver-wrench"></i>
+            Repairs
+        </a>
+        <a class="quick-action" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
+        </a>
     </div>
 </div>
 {% endblock %}

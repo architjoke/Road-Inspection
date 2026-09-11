@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}GIS Map{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/map.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="map-page" x-data="mapFilters()" x-cloak>
+    <div class="page-header map-page-header">
+        <div>
+            <p class="page-kicker">PostGIS + Leaflet</p>
+            <h1>GIS Inspection Map</h1>
+            <p class="text-muted mb-0">
+                Color-coded detections from PostgreSQL. Tap a marker for details.
+            </p>
+        </div>
+
+        <button type="button" class="btn btn-outline-primary d-lg-none"
+            @click="sidebarOpen = !sidebarOpen">
+            <i class="fa-solid fa-sliders me-2"></i>
+            Filters
+        </button>
+    </div>
+
+    <div class="map-layout">
+        <aside class="map-sidebar content-card" :class="{ 'is-open': sidebarOpen }">
+            <div class="content-card-header">
+                <div>
+                    <h2>Map Filters</h2>
+                    <p>Filter markers without reloading the page.</p>
+                </div>
+                <button type="button" class="btn-close d-lg-none" @click="sidebarOpen = false"></button>
+            </div>
+
+            <div class="p-3 map-filter-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Severity</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        <template x-for="sev in severityOptions" :key="sev">
+                            <label class="filter-chip">
+                                <input type="checkbox" :value="sev" x-model="severity">
+                                <span x-text="sev"></span>
+                            </label>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="date_from">Date from</label>
+                    <input type="date" id="date_from" class="form-control" x-model="dateFrom">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="date_to">Date to</label>
+                    <input type="date" id="date_to" class="form-control" x-model="dateTo">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="ward_id">Ward</label>
+                    <select id="ward_id" class="form-select" x-model="wardId">
+                        <option value="">All wards</option>
+                        {% for ward in wards %}
+                        <option value="{{ ward.id }}">{{ ward.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Priority</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        <label class="filter-chip"><input type="checkbox" value="1" x-model="priority"><span>High
+                                (1)</span></label>
+                        <label class="filter-chip"><input type="checkbox" value="2" x-model="priority"><span>Medium
+                                (2)</span></label>
+                        <label class="filter-chip"><input type="checkbox" value="3" x-model="priority"><span>Low
+                                (3)</span></label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="radius_meters">Radius search (meters)</label>
+                    <input type="number" id="radius_meters" class="form-control" min="10" max="50000" step="10"
+                        x-model.number="radiusMeters">
+                    <small class="text-muted">Click the map, then run nearby search.</small>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-primary" @click="applyFilters()">
+                        <i class="fa-solid fa-filter me-1"></i>
+                        Apply Filters
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" @click="runRadiusSearch()">
+                        <i class="fa-solid fa-bullseye me-1"></i>
+                        Find Nearby
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" @click="toggleWards()">
+                        <i class="fa-solid fa-draw-polygon me-1"></i>
+                        <span x-text="wardsVisible ? 'Hide Ward Boundaries' : 'Show Ward Boundaries'"></span>
+                    </button>
+                    <button type="button" class="btn btn-link" @click="resetFilters()">Reset</button>
+                </div>
+
+                <div class="map-legend mt-4">
+                    <strong>Severity colors</strong>
+                    <div><span class="legend-dot severe"></span> SEVERE</div>
+                    <div><span class="legend-dot moderate"></span> MODERATE</div>
+                    <div><span class="legend-dot minor"></span> MINOR</div>
+                    <div><span class="legend-dot unknown"></span> Inspection / unknown</div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="map-stage content-card">
+            <div id="inspection-map" data-geojson-url="{{ geojson_url }}" data-wards-url="{{ wards_url }}"
+                data-radius-url="{{ radius_url }}"></div>
+            <div class="map-status" id="map-status">Loading map data…</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+<script>
+    function mapFilters() {
+        return {
+            sidebarOpen: false,
+            severityOptions: ['SEVERE', 'MODERATE', 'MINOR'],
+            severity: [],
+            priority: [],
+            wardId: '',
+            dateFrom: '',
+            dateTo: '',
+            radiusMeters: 250,
+            wardsVisible: false,
+            applyFilters() {
+                if (window.RoadInspectionMap) {
+                    window.RoadInspectionMap.loadFeatures({
+                        severity: this.severity,
+                        priority: this.priority,
+                        ward_id: this.wardId,
+                        date_from: this.dateFrom,
+                        date_to: this.dateTo
+                    });
+                }
+                this.sidebarOpen = false;
+            },
+            resetFilters() {
+                this.severity = [];
+                this.priority = [];
+                this.wardId = '';
+                this.dateFrom = '';
+                this.dateTo = '';
+                this.applyFilters();
+            },
+            runRadiusSearch() {
+                if (window.RoadInspectionMap) {
+                    window.RoadInspectionMap.radiusSearch(this.radiusMeters);
+                }
+            },
+            toggleWards() {
+                this.wardsVisible = !this.wardsVisible;
+                if (window.RoadInspectionMap) {
+                    window.RoadInspectionMap.toggleWardBoundaries(this.wardsVisible);
+                }
+            }
+        };
+    }
+</script>
+{% endblock %}

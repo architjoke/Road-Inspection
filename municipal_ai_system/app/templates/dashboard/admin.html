@@ -8,47 +8,123 @@
         <p class="page-kicker">Municipal operations</p>
         <h1>Municipal Admin Dashboard</h1>
         <p class="text-muted mb-0">
-            Manage users, inspection operations, repair work, and municipality reports.
+            Live inspection stats, severity trends, and ward breakdown.
         </p>
     </div>
 
-    <a class="btn btn-primary" href="{{ url_for('protected.users') }}">
-        <i class="fa-solid fa-users me-2"></i>
-        Manage Users
+    <a class="btn btn-primary" href="{{ url_for('inspections.list_all') }}">
+        <i class="fa-solid fa-clipboard-list me-2"></i>
+        View Inspections
     </a>
 </div>
 
+{% set cards = analytics.cards if analytics else {} %}
 <div class="row g-4 mb-4">
     <div class="col-sm-6 col-xl-3">
         <div class="stat-card stat-primary">
-            <span>Users</span>
-            <strong>—</strong>
-            <small>Municipal system users</small>
+            <span>Total Inspections</span>
+            <strong>{{ cards.total_inspections if cards.total_inspections is defined else '—' }}</strong>
+            <small>All recorded inspections</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-3">
         <div class="stat-card stat-info">
-            <span>Inspections</span>
-            <strong>—</strong>
-            <small>Total recorded inspections</small>
+            <span>Total Detections</span>
+            <strong>{{ cards.total_detections if cards.total_detections is defined else '—' }}</strong>
+            <small>AI detections (Phase 6+)</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-3">
         <div class="stat-card stat-warning">
-            <span>Open Repairs</span>
-            <strong>—</strong>
-            <small>Tasks awaiting completion</small>
+            <span>Avg Severity Score</span>
+            <strong>{{ cards.avg_severity_score if cards.avg_severity_score is defined else '—' }}</strong>
+            <small>1=Minor · 3=Severe</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-3">
         <div class="stat-card stat-success">
-            <span>Reports</span>
-            <strong>—</strong>
-            <small>Available municipal reports</small>
+            <span>Repairs This Month</span>
+            <strong>{{ cards.repairs_completed_this_month if cards.repairs_completed_this_month is defined else '—' }}</strong>
+            <small>Verified / closed</small>
         </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-4">
+        <div class="content-card h-100">
+            <div class="content-card-header">
+                <div>
+                    <h2>Severity (30 days)</h2>
+                    <p>Detections by severity class.</p>
+                </div>
+            </div>
+            <div class="p-3">
+                <canvas id="chart-severity" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="content-card h-100">
+            <div class="content-card-header">
+                <div>
+                    <h2>Damage Types</h2>
+                    <p>Share of defect classes.</p>
+                </div>
+            </div>
+            <div class="p-3">
+                <canvas id="chart-damage" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="content-card h-100">
+            <div class="content-card-header">
+                <div>
+                    <h2>Inspections / Week</h2>
+                    <p>Last 12 weeks trend.</p>
+                </div>
+            </div>
+            <div class="p-3">
+                <canvas id="chart-weekly" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="content-card mb-4">
+    <div class="content-card-header">
+        <div>
+            <h2>Ward Breakdown</h2>
+            <p>Inspection counts by ward.</p>
+        </div>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('protected.map_view') }}">Open GIS Map</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Ward</th>
+                    <th>Inspections</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if analytics and analytics.ward_breakdown %}
+                {% for row in analytics.ward_breakdown %}
+                <tr>
+                    <td>{{ row.ward_name }}</td>
+                    <td>{{ row.count }}</td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="2" class="text-center text-muted py-4">
+                        No ward-linked inspections yet.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -56,30 +132,78 @@
     <div class="content-card-header">
         <div>
             <h2>Quick Actions</h2>
-            <p>Operational modules will be connected in the next phases.</p>
+            <p>Jump to operational modules.</p>
         </div>
     </div>
-
     <div class="quick-actions">
         <a class="quick-action" href="{{ url_for('protected.users') }}">
             <i class="fa-solid fa-user-plus"></i>
             Manage Users
         </a>
-
-        <a class="quick-action" href="{{ url_for('protected.inspections') }}">
+        <a class="quick-action" href="{{ url_for('inspections.list_all') }}">
             <i class="fa-solid fa-clipboard-list"></i>
             View Inspections
         </a>
-
         <a class="quick-action" href="{{ url_for('protected.repairs') }}">
             <i class="fa-solid fa-screwdriver-wrench"></i>
             Manage Repairs
         </a>
-
-        <a class="quick-action" href="{{ url_for('protected.reports') }}">
-            <i class="fa-solid fa-file-export"></i>
-            Generate Reports
+        <a class="quick-action" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
         </a>
     </div>
 </div>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+    const analytics = {{ analytics|tojson if analytics else 'null' }};
+
+    function makeChart(id, type, labels, values, colors) {
+        const el = document.getElementById(id);
+        if (!el || typeof Chart === 'undefined' || !labels) return;
+        new Chart(el, {
+            type,
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: type === 'line' ? '#1d4ed8' : colors,
+                    borderWidth: type === 'line' ? 2 : 0,
+                    fill: type === 'line',
+                    tension: 0.25
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: type === 'pie' } },
+                scales: type === 'pie' ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    if (analytics) {
+        makeChart(
+            'chart-severity', 'bar',
+            analytics.severity_bar.labels,
+            analytics.severity_bar.values,
+            ['#dc2626', '#ea580c', '#16a34a']
+        );
+        makeChart(
+            'chart-damage', 'pie',
+            analytics.damage_pie.labels,
+            analytics.damage_pie.values,
+            ['#1d4ed8', '#0ea5e9', '#14b8a6', '#f59e0b', '#8b5cf6']
+        );
+        makeChart(
+            'chart-weekly', 'line',
+            analytics.inspections_per_week.labels,
+            analytics.inspections_per_week.values,
+            ['rgba(37, 99, 235, 0.2)']
+        );
+    }
+</script>
 {% endblock %}

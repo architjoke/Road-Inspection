@@ -3,11 +3,13 @@
 {% block title %}{{ inspection.inspection_code }}{% endblock %}
 
 {% block page_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/inspection.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header" x-data>
     <div>
         <p class="page-kicker">Inspection detail</p>
         <h1>{{ inspection.inspection_code }}</h1>
@@ -36,45 +38,53 @@
             <div class="content-card-header">
                 <div>
                     <h2>Uploaded Media</h2>
-                    <p>Original field evidence submitted for this inspection.</p>
+                    <p>Field evidence for this inspection (local or ImageKit CDN).</p>
                 </div>
             </div>
 
             <div class="p-4">
                 {% for media in inspection.media_items %}
-                <div class="media-detail-card">
+                <div class="media-detail-card mb-3">
                     <div>
-                        <div class="fw-semibold">
-                            {{ media.file_name }}
-                        </div>
-
+                        <div class="fw-semibold">{{ media.file_name }}</div>
                         <small class="text-muted">
                             {{ media.media_type.title() }}
-
                             {% if media.file_size_bytes %}
-                            ·
-                            {{ "%.2f"|format(media.file_size_bytes / 1024 / 1024) }}
-                            MB
+                            · {{ "%.2f"|format(media.file_size_bytes / 1024 / 1024) }} MB
+                            {% endif %}
+                            {% if media.storage_bucket %}
+                            · {{ media.storage_bucket }}
                             {% endif %}
                         </small>
                     </div>
 
-                    <a class="btn btn-outline-primary btn-sm"
-                        href="{{ url_for('inspections.view_media', media_id=media.id) }}" target="_blank">
-                        <i class="fa-solid fa-eye me-1"></i>
-                        View Media
-                    </a>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm"
+                            @click="$dispatch('open-media-modal', { src: '{{ url_for('inspections.view_media', media_id=media.id) }}', title: '{{ media.file_name|e }}' })">
+                            <i class="fa-solid fa-expand me-1"></i>
+                            Preview
+                        </button>
+                        <a class="btn btn-outline-secondary btn-sm"
+                            href="{{ url_for('inspections.view_media', media_id=media.id) }}" target="_blank">
+                            Open
+                        </a>
+                    </div>
                 </div>
 
                 {% if media.media_type == "image" %}
-                <img class="inspection-image-preview mt-3"
-                    src="{{ url_for('inspections.view_media', media_id=media.id) }}"
+                <img class="inspection-image-preview"
+                    src="{{ media.cdn_url or url_for('inspections.view_media', media_id=media.id) }}"
                     alt="Inspection image {{ media.file_name }}">
+                {% elif media.media_type == "video" %}
+                <video class="inspection-image-preview" controls
+                    src="{{ media.cdn_url or url_for('inspections.view_media', media_id=media.id) }}"></video>
+                {% endif %}
+
+                {% if media.cdn_url %}
+                <p class="small text-muted mt-2 mb-0">ImageKit: {{ media.cdn_url }}</p>
                 {% endif %}
                 {% else %}
-                <p class="text-muted mb-0">
-                    No media record is attached to this inspection.
-                </p>
+                <p class="text-muted mb-0">No media record is attached to this inspection.</p>
                 {% endfor %}
             </div>
         </div>
@@ -82,41 +92,44 @@
         <div class="content-card mt-4">
             <div class="content-card-header">
                 <div>
-                    <h2>AI Processing</h2>
-                    <p>This feature begins in the next implementation phase.</p>
+                    <h2>Map Location</h2>
+                    <p>PostGIS POINT from inspection GPS.</p>
                 </div>
             </div>
+            <div class="p-3">
+                {% if inspection.location_latitude and inspection.location_longitude %}
+                <div id="detail-map" class="detail-map"
+                    data-lat="{{ inspection.location_latitude }}"
+                    data-lng="{{ inspection.location_longitude }}"
+                    data-label="{{ inspection.inspection_code }}"></div>
+                {% else %}
+                <p class="text-muted mb-0 px-2">No GPS coordinates are stored for this inspection.</p>
+                {% endif %}
+            </div>
+        </div>
 
+        <div class="content-card mt-4">
+            <div class="content-card-header">
+                <div>
+                    <h2>AI Processing</h2>
+                    <p>Detection list appears after Phase 6/7 analysis.</p>
+                </div>
+            </div>
             <div class="p-4">
                 <div class="phase-status-row">
-                    <span class="phase-status-check">
-                        <i class="fa-solid fa-check"></i>
-                    </span>
-
+                    <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
                     Inspection record created
                 </div>
-
                 <div class="phase-status-row">
-                    <span class="phase-status-check">
-                        <i class="fa-solid fa-check"></i>
-                    </span>
-
+                    <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
                     GPS location captured
                 </div>
-
                 <div class="phase-status-row">
-                    <span class="phase-status-check">
-                        <i class="fa-solid fa-check"></i>
-                    </span>
-
-                    Media saved for processing
+                    <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
+                    Media saved (ImageKit or local)
                 </div>
-
                 <div class="phase-status-row text-muted">
-                    <span class="phase-status-wait">
-                        <i class="fa-solid fa-hourglass-half"></i>
-                    </span>
-
+                    <span class="phase-status-wait"><i class="fa-solid fa-hourglass-half"></i></span>
                     YOLO AI analysis will start in a later phase
                 </div>
             </div>
@@ -130,7 +143,6 @@
                     <h2>Inspection Status</h2>
                 </div>
             </div>
-
             <div class="p-4">
                 <span class="badge text-bg-warning fs-6">
                     {{ inspection.status.replace("_", " ").title() }}
@@ -144,40 +156,35 @@
                     <h2>Road Location</h2>
                 </div>
             </div>
-
             <div class="p-4">
                 <dl class="inspection-details-list">
                     <div>
                         <dt>Road / Location</dt>
-                        <dd>
-                            {{ inspection.location_name or "Not provided" }}
-                        </dd>
+                        <dd>{{ inspection.location_name or "Not provided" }}</dd>
                     </div>
-
                     <div>
                         <dt>Latitude</dt>
-                        <dd>
-                            {{ inspection.location_latitude or "Not captured" }}
-                        </dd>
+                        <dd>{{ inspection.location_latitude or "Not captured" }}</dd>
                     </div>
-
                     <div>
                         <dt>Longitude</dt>
-                        <dd>
-                            {{ inspection.location_longitude or "Not captured" }}
-                        </dd>
+                        <dd>{{ inspection.location_longitude or "Not captured" }}</dd>
                     </div>
-
+                    <div>
+                        <dt>Ward ID</dt>
+                        <dd>{{ inspection.ward_id or "Unassigned" }}</dd>
+                    </div>
                     <div>
                         <dt>Municipality ID</dt>
                         <dd>{{ inspection.municipality_id }}</dd>
                     </div>
-
                     <div>
                         <dt>Inspection Type</dt>
-                        <dd>
-                            {{ inspection.inspection_type.replace("_", " ").title() }}
-                        </dd>
+                        <dd>{{ inspection.inspection_type.replace("_", " ").title() }}</dd>
+                    </div>
+                    <div>
+                        <dt>Total Detections</dt>
+                        <dd>{{ inspection.total_detections or 0 }}</dd>
                     </div>
                 </dl>
             </div>
@@ -189,13 +196,53 @@
                     <h2>Field Notes</h2>
                 </div>
             </div>
-
             <div class="p-4">
-                <p class="mb-0">
-                    {{ inspection.notes or "No notes were provided." }}
-                </p>
+                <p class="mb-0">{{ inspection.notes or "No notes were provided." }}</p>
             </div>
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="mediaPreviewModal" tabindex="-1" aria-hidden="true"
+    x-data="{ src: '', title: '' }"
+    @open-media-modal.window="src = $event.detail.src; title = $event.detail.title; bootstrap.Modal.getOrCreateInstance($el).show()">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" x-text="title">Media preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img :src="src" class="img-fluid" alt="Full size media preview">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const el = document.getElementById('detail-map');
+        if (!el || typeof L === 'undefined') return;
+        const lat = parseFloat(el.dataset.lat);
+        const lng = parseFloat(el.dataset.lng);
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+        const map = L.map(el).setView([lat, lng], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        L.circleMarker([lat, lng], {
+            radius: 9,
+            color: '#fff',
+            weight: 2,
+            fillColor: '#2563eb',
+            fillOpacity: 0.95
+        }).addTo(map).bindPopup(el.dataset.label || 'Inspection');
+        setTimeout(() => map.invalidateSize(), 150);
+    });
+</script>
 {% endblock %}

@@ -2,6 +2,7 @@ from flask import Blueprint, render_template
 from flask_login import current_user, login_required
 
 from app.auth.constants import canonical_role, normalize_role
+from app.services.dashboard_service import get_analytics_summary
 
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -59,7 +60,20 @@ def index():
             unknown_role=role_name,
         ), 403
 
-    return render_template(dashboard_template)
+    municipality_id = None
+    is_super = getattr(current_user, "is_super_admin", False)
+    if callable(is_super):
+        is_super = is_super()
+    if not is_super:
+        municipality_id = getattr(current_user, "municipality_id", None)
+
+    analytics = None
+    try:
+        analytics = get_analytics_summary(municipality_id)
+    except Exception:
+        analytics = None
+
+    return render_template(dashboard_template, analytics=analytics)
 
 
 @dashboard_bp.route("/debug/current-role")

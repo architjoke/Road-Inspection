@@ -1,6 +1,8 @@
 from flask import Blueprint, render_template
+from flask_login import current_user
 
 from app.decorators import roles_required
+from app.services.ward_service import list_wards_for_municipality
 
 
 protected_bp = Blueprint("protected", __name__)
@@ -58,11 +60,7 @@ def detections():
     "contractor"
 )
 def repairs():
-    return render_template(
-        "placeholder.html",
-        page_title="Repairs",
-        message="Repair assignment and verification will be implemented later."
-    )
+    return render_template("repairs/manager.html")
 
 
 @protected_bp.route("/map")
@@ -70,13 +68,24 @@ def repairs():
     "super_admin",
     "municipal_admin",
     "field_officer",
-    "viewer"
+    "viewer",
+    "field_worker",
 )
 def map_view():
+    municipality_id = None
+    is_super = getattr(current_user, "is_super_admin", False)
+    if callable(is_super):
+        is_super = is_super()
+    if not is_super:
+        municipality_id = current_user.municipality_id
+
+    wards = list_wards_for_municipality(municipality_id)
     return render_template(
-        "placeholder.html",
-        page_title="GIS Map",
-        message="Leaflet/PostGIS map integration will be implemented later."
+        "map/index.html",
+        wards=wards,
+        geojson_url="/api/inspections/geojson",
+        wards_url="/api/wards/boundaries",
+        radius_url="/api/inspections/radius",
     )
 
 

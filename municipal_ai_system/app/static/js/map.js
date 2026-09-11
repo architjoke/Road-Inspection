@@ -49,8 +49,10 @@
     };
 
     const popupHtml = (props) => {
+        const address = props.address || props.location_name || "—";
         const rows = [
             ["Inspection", props.inspection_code || props.inspection_id || "—"],
+            ["Address", address],
             ["Damage", props.damage_type || "—"],
             ["Severity", props.severity || "—"],
             ["Priority", props.priority || "—"],

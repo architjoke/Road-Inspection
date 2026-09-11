@@ -136,6 +136,7 @@ def inspections_as_geojson(
                 "ward_name": ward_name,
                 "status": inspection.status,
                 "location_name": inspection.location_name,
+                "address": inspection.location_name,
                 "timestamp": inspection.inspection_date,
             },
         )
@@ -344,6 +345,7 @@ def radius_search(
                 "ward_name": ward_name,
                 "status": inspection.status,
                 "location_name": inspection.location_name,
+                "address": inspection.location_name,
                 "timestamp": inspection.inspection_date,
                 "radius_meters": radius_meters,
             },

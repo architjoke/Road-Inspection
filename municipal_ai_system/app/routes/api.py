@@ -11,6 +11,7 @@ from flask_login import current_user, login_required
 from app.decorators import roles_required
 from app.extensions import csrf, db
 from app.services.dashboard_service import get_analytics_summary
+from app.services.geocoding_service import reverse_geocode
 from app.services.inspection_service import (
     create_inspection_with_media,
     inspection_upload_payload,
@@ -45,6 +46,41 @@ def _parse_date(value: str | None):
         return datetime.strptime(value[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+@api_bp.route("/geocode/reverse")
+@login_required
+def geocode_reverse():
+    """Reverse geocode lat/lng → full street address (Nominatim)."""
+    try:
+        lat = float(request.args.get("lat", ""))
+        lng = float(request.args.get("lng", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "lat and lng must be numbers."}), 400
+
+    result = reverse_geocode(lat, lng)
+    if not result:
+        return jsonify(
+            {
+                "address": None,
+                "display_name": None,
+                "error": "No address found for these coordinates.",
+            }
+        ), 404
+
+    return jsonify(
+        {
+            "address": result["address"],
+            "display_name": result["display_name"],
+            "road": result.get("road"),
+            "city": result.get("city"),
+            "state": result.get("state"),
+            "postcode": result.get("postcode"),
+            "country": result.get("country"),
+            "lat": lat,
+            "lng": lng,
+        }
+    )
 
 
 @api_bp.route("/inspections/geojson")

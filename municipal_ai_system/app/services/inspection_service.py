@@ -11,6 +11,7 @@ from app.extensions import db
 from app.models.inspection import Inspection
 from app.models.inspection_media import InspectionMedia
 from app.services.gps_service import resolve_inspection_gps
+from app.services.geocoding_service import resolve_location_label, reverse_geocode
 from app.services.media_service import save_phase4_temp_media
 from app.services.ward_service import find_ward_for_point
 from app.utils.file_validation import get_media_type
@@ -38,9 +39,6 @@ def create_inspection_with_media(
     weather_conditions = (form_data.get("weather_conditions") or "").strip()
     lighting_conditions = (form_data.get("lighting_conditions") or "").strip()
 
-    if not location_name:
-        raise ValueError("Road or location name is required.")
-
     media_type = get_media_type(uploaded_file.filename or "")
 
     latitude, longitude, accuracy, gps_source, needs_review = resolve_inspection_gps(
@@ -48,6 +46,32 @@ def create_inspection_with_media(
         uploaded_file=uploaded_file,
         media_type=media_type,
     )
+
+    # Auto street address from GPS (Nominatim). Keep typed name if user provided one
+    # that is more specific than a placeholder.
+    geocoded = reverse_geocode(float(latitude), float(longitude))
+    street_address = (geocoded or {}).get("address") if geocoded else None
+
+    placeholder_names = {
+        "",
+        "field upload",
+        "road inspection",
+        "location",
+        "unknown",
+    }
+    if not location_name or location_name.lower() in placeholder_names:
+        location_name = resolve_location_label(
+            float(latitude),
+            float(longitude),
+            fallback=location_name or None,
+        )
+    elif street_address and street_address.lower() not in location_name.lower():
+        # Keep worker note + append resolved address for searchability
+        if len(location_name) < 80:
+            location_name = f"{location_name} — {street_address}"
+
+    if not location_name:
+        raise ValueError("Road or location name is required.")
 
     if needs_review:
         logger.warning(
@@ -77,6 +101,9 @@ def create_inspection_with_media(
         note_parts.append("[GPS manual override]")
     if needs_review:
         note_parts.append("[Flagged for admin GPS review]")
+    if street_address:
+        note_parts.append(f"[Address: {street_address}]")
+
 
     try:
         inspection = Inspection(
@@ -135,6 +162,8 @@ def create_inspection_with_media(
                 "gps_source": gps_source,
                 "needs_review": needs_review,
                 "imagekit_file_id": saved_media.get("image_id"),
+                "street_address": street_address,
+                "geocode_display_name": (geocoded or {}).get("display_name"),
             },
             is_before_image=True,
             is_after_image=False,
@@ -180,6 +209,8 @@ def inspection_upload_payload(inspection: Inspection) -> dict:
     return {
         "inspection_id": inspection.id,
         "inspection_code": inspection.inspection_code,
+        "location_name": inspection.location_name,
+        "address": inspection.location_name,
         "gps": {
             "lat": float(inspection.location_latitude)
             if inspection.location_latitude is not None

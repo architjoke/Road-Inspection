@@ -19,6 +19,7 @@ function inspectionUploadForm() {
         manualLat: "",
         manualLng: "",
         submitting: false,
+        resolvingAddress: false,
 
         onFileChange(event) {
             this.applyFile(event.target.files[0]);
@@ -64,6 +65,43 @@ function inspectionUploadForm() {
             }
         },
 
+        async fillAddressFromGps(lat, lng) {
+            const locationInput = document.getElementById("location_name");
+            if (!locationInput || !lat || !lng) {
+                return;
+            }
+
+            this.resolvingAddress = true;
+            try {
+                const response = await fetch(
+                    `/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`,
+                    { credentials: "same-origin", headers: { Accept: "application/json" } }
+                );
+                if (!response.ok) {
+                    return;
+                }
+                const data = await response.json();
+                const address = data.address || data.display_name;
+                if (!address) {
+                    return;
+                }
+
+                const current = (locationInput.value || "").trim();
+                const placeholders = ["", "field upload", "road inspection", "location"];
+                if (!current || placeholders.includes(current.toLowerCase())) {
+                    locationInput.value = address;
+                } else if (!current.includes(address)) {
+                    locationInput.value = `${current} — ${address}`;
+                }
+
+                window.RoadInspectionUI?.toast(`Address: ${address}`, "success");
+            } catch (error) {
+                console.warn("Address lookup failed", error);
+            } finally {
+                this.resolvingAddress = false;
+            }
+        },
+
         captureLocation() {
             if (!navigator.geolocation) {
                 this.gpsCardClass = "gps-error";
@@ -87,9 +125,12 @@ function inspectionUploadForm() {
                     this.accDisplay = `±${position.coords.accuracy.toFixed(1)} m`;
                     this.gpsCardClass = "gps-captured";
                     this.gpsTitle = "Location captured";
-                    this.gpsMessage = "Browser GPS coordinates are ready for submission.";
+                    this.gpsMessage = "Resolving full street address…";
                     this.manualOverride = false;
                     this.showManual = false;
+                    this.fillAddressFromGps(this.latitude, this.longitude).then(() => {
+                        this.gpsMessage = "GPS and street address are ready for submission.";
+                    });
                 },
                 (error) => {
                     const messages = {
@@ -122,6 +163,9 @@ function inspectionUploadForm() {
             this.gpsCardClass = this.manualLat && this.manualLng ? "gps-captured" : "gps-error";
             this.gpsTitle = "Manual GPS override";
             this.gpsMessage = "Coordinates will be taken from the manual fields.";
+            if (this.manualLat && this.manualLng) {
+                this.fillAddressFromGps(this.manualLat, this.manualLng);
+            }
         },
 
         onSubmit(event) {
@@ -132,13 +176,11 @@ function inspectionUploadForm() {
                 return;
             }
 
-            // Allow submit without browser GPS — backend can use EXIF or manual fields.
             this.submitting = true;
         },
     };
 }
 
-// Keep legacy helpers available for non-Alpine pages.
 document.addEventListener("DOMContentLoaded", () => {
     const locationButton = document.getElementById("capture-location-button");
     if (locationButton && !locationButton.hasAttribute("@click") && window.RoadInspectionGPS) {

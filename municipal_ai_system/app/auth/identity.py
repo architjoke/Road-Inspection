@@ -9,6 +9,24 @@ from app.models import get_model
 logger = logging.getLogger(__name__)
 
 
+class _Flag:
+    """Bool that also supports legacy ``user.is_super_admin()`` call sites."""
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: bool):
+        self._value = bool(value)
+
+    def __bool__(self):
+        return self._value
+
+    def __call__(self):
+        return self._value
+
+    def __repr__(self):
+        return f"_Flag({self._value})"
+
+
 class UserIdentity(UserMixin):
     def __init__(
         self,
@@ -74,8 +92,8 @@ class UserIdentity(UserMixin):
     @property
     def is_super_admin(self):
         if self.kind == KIND_SUPER_ADMIN:
-            return True
-        return canonical_role(self.role_name) == ROLE_SUPER_ADMIN
+            return _Flag(True)
+        return _Flag(canonical_role(self.role_name) == ROLE_SUPER_ADMIN)
 
     def has_role(self, *role_names):
         allowed = {
@@ -184,16 +202,57 @@ def load_identity(session_user_id):
         return None
 
     if kind == 'user':
+        # Offline / memory directory first (campus demo + TESTING).
+        try:
+            from app.services.offline_store import offline_mode_enabled
+            from app.services.directory_service import get_user
+            from flask import current_app, has_app_context
+
+            offline = False
+            if has_app_context():
+                offline = offline_mode_enabled() or not current_app.config.get(
+                    "DATABASE_CONFIGURED"
+                )
+            if offline:
+                row = get_user(pk)
+                if row is not None:
+                    return UserIdentity(
+                        kind=KIND_USER,
+                        pk=row.id,
+                        username=row.username,
+                        email=row.email,
+                        full_name=row.full_name,
+                        role_name=getattr(row, "role_name", None) or "field_worker",
+                        municipality_id=getattr(row, "municipality_id", None),
+                        role_id=getattr(row, "role_id", None),
+                        is_active=getattr(row, "is_active", True),
+                        municipality_ids=(
+                            [row.municipality_id]
+                            if getattr(row, "municipality_id", None)
+                            else []
+                        ),
+                    )
+        except Exception:
+            logger.exception("Offline identity load failed for user %s", pk)
+
         User = get_model('users')
         if User is None:
             return None
-        return identity_from_user(db.session.get(User, pk))
+        try:
+            return identity_from_user(db.session.get(User, pk))
+        except Exception:
+            logger.exception("DB identity load failed for user %s", pk)
+            return None
 
     if kind == 'sa':
         SuperAdmin = get_model('super_admins')
         if SuperAdmin is None:
             return None
-        return identity_from_super_admin(db.session.get(SuperAdmin, pk))
+        try:
+            return identity_from_super_admin(db.session.get(SuperAdmin, pk))
+        except Exception:
+            logger.exception("DB identity load failed for super admin %s", pk)
+            return None
 
     return None
 

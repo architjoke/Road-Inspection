@@ -103,6 +103,27 @@ def create_app(config_overrides: dict | None = None):
                     "Model reflection deferred until database is reachable: %s",
                     exc,
                 )
+                # Keep login usable via offline demo users when RDS is down.
+                app.config["DATABASE_REACHABLE"] = False
+            else:
+                app.config["DATABASE_REACHABLE"] = True
+    else:
+        app.config["DATABASE_REACHABLE"] = False
+
+    # Campus / offline demo accounts (admin, worker, officer, contractor, viewer).
+    if (
+        app.config.get("OFFLINE_MODE")
+        or app.config.get("TESTING")
+        or not db_ok
+        or not app.config.get("DATABASE_REACHABLE", True)
+    ):
+        with app.app_context():
+            try:
+                from app.services.directory_service import seed_offline_demo_accounts
+
+                seed_offline_demo_accounts()
+            except Exception:
+                logger.exception("Could not seed offline demo accounts")
 
     @app.after_request
     def apply_security_headers(response):

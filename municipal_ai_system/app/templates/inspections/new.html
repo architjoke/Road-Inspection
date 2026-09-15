@@ -20,7 +20,7 @@
         </p>
     </div>
 
-    {% if current_user.is_field_worker() and not current_user.is_municipal_admin() and not current_user.is_super_admin() %}
+    {% if current_user.is_field_worker() and not current_user.is_municipal_admin() and not current_user.is_super_admin %}
     <a class="btn btn-outline-primary" href="{{ url_for('inspections.my_inspections') }}">
         <i class="fa-solid fa-list me-2"></i>
         My Inspections

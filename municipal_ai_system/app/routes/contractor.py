@@ -29,9 +29,23 @@ def _contractor_id():
 
 def _owns(job: dict) -> bool:
     cid = _contractor_id()
-    return job and (
-        job.get("assignee_id") == cid or job.get("contractor_user_id") == cid
-    )
+    if not job or cid is None:
+        return False
+    try:
+        want = int(cid)
+    except (TypeError, ValueError):
+        want = cid
+    for key in ("assignee_id", "contractor_user_id"):
+        raw = job.get(key)
+        if raw is None:
+            continue
+        try:
+            if int(raw) == want:
+                return True
+        except (TypeError, ValueError):
+            if raw == cid:
+                return True
+    return False
 
 
 def _decorate(job: dict) -> dict:

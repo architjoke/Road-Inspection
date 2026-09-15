@@ -107,7 +107,12 @@
                 {% else %}
                 <tr>
                     <td colspan="6" class="text-center text-muted py-4">
-                        Nothing pending upload. Check <a href="{{ url_for('contractor.jobs') }}">all tasks</a>
+                        <p class="mb-2 fw-semibold">Nothing pending upload</p>
+                        <p class="small mb-2">
+                            Jobs appear after municipal staff assign a repair to your account.
+                            Capture Inspection is for field workers — not this role.
+                        </p>
+                        Check <a href="{{ url_for('contractor.jobs') }}">all tasks</a>
                         or <a href="{{ url_for('contractor.jobs', status='payments') }}">payment status</a>.
                     </td>
                 </tr>

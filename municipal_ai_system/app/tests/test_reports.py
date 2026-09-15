@@ -121,10 +121,13 @@ def _seed_inspection_with_detections(*, with_verification: bool = False, tmp_pat
         import cv2
         import numpy as np
 
-        before = np.zeros((240, 320, 3), dtype=np.uint8)
-        cv2.rectangle(before, (20, 20), (120, 120), (200, 200, 200), -1)
+        # Textured scenes so ORB same-road gate can succeed (solid blocks fail).
+        rng = np.random.default_rng(42)
+        before = rng.integers(40, 200, size=(240, 320), dtype=np.uint8)
+        before = cv2.cvtColor(before, cv2.COLOR_GRAY2BGR)
+        cv2.rectangle(before, (40, 40), (140, 140), (40, 40, 220), -1)
         after = before.copy()
-        cv2.rectangle(after, (20, 20), (120, 120), (10, 10, 10), -1)
+        cv2.rectangle(after, (40, 40), (140, 140), (20, 180, 20), -1)
         b = tmp_path / "before.jpg"
         a = tmp_path / "after.jpg"
         cv2.imwrite(str(b), before)

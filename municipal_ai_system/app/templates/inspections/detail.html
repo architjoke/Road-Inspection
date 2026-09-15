@@ -32,6 +32,11 @@
         <i class="fa-solid fa-arrow-left me-2"></i>
         My Inspections
     </a>
+    {% elif current_user.is_contractor() %}
+    <a class="btn btn-outline-primary" href="{{ url_for('contractor.jobs') }}">
+        <i class="fa-solid fa-arrow-left me-2"></i>
+        My Repair Tasks
+    </a>
     {% else %}
     <a class="btn btn-outline-primary" href="{{ url_for('inspections.list_all') }}">
         <i class="fa-solid fa-arrow-left me-2"></i>
@@ -171,7 +176,7 @@
                 </div>
                 {% endif %}
 
-                {% set can_manage_repairs = current_user.is_super_admin() or current_user.is_municipal_admin() or current_user.is_field_officer() %}
+                {% set can_manage_repairs = current_user.is_super_admin or current_user.is_municipal_admin() or current_user.is_field_officer() %}
                 {% if detections %}
                 <ul class="list-unstyled mt-3 mb-0">
                     {% for det in detections %}

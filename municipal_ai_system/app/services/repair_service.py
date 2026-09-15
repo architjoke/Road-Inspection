@@ -31,12 +31,25 @@ def list_repairs(
     with _lock:
         rows = [deepcopy(item) for item in _repairs.values()]
     if assignee_id is not None:
-        rows = [
-            r
-            for r in rows
-            if r.get("assignee_id") == assignee_id
-            or r.get("contractor_user_id") == assignee_id
-        ]
+        try:
+            want = int(assignee_id)
+        except (TypeError, ValueError):
+            want = assignee_id
+
+        def _matches(row: dict[str, Any]) -> bool:
+            for key in ("assignee_id", "contractor_user_id"):
+                raw = row.get(key)
+                if raw is None:
+                    continue
+                try:
+                    if int(raw) == want:
+                        return True
+                except (TypeError, ValueError):
+                    if raw == assignee_id:
+                        return True
+            return False
+
+        rows = [r for r in rows if _matches(r)]
     if status:
         rows = [r for r in rows if r.get("status") == status]
     elif history:

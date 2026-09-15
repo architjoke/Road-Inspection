@@ -105,7 +105,7 @@ def new():
         request.method == "GET"
         and current_user.is_field_worker()
         and not current_user.is_municipal_admin()
-        and not current_user.is_super_admin()
+        and not _is_super_admin(current_user)
         and not gallery_mode
     ):
         return redirect(url_for("dashboard.index") + "#live-capture")
@@ -157,12 +157,18 @@ def new():
             )
 
         except ValueError as error:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             flash(str(error), "danger")
             return _render_new()
 
         except Exception:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
             current_app.logger.exception(
                 "Could not create inspection."

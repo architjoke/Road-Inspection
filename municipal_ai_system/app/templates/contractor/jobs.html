@@ -5,6 +5,8 @@
 {% elif status_filter == 'payments' %}Payment Status
 {% elif status_filter == 'verified' %}Verified Repairs
 {% elif status_filter == 'paid' %}Paid Repairs
+{% elif status_filter == 'in_progress' %}In Progress
+{% elif status_filter == 'completed' %}Submitted Jobs
 {% else %}My Repair Tasks
 {% endif %}
 {% endblock %}
@@ -13,22 +15,28 @@
 {% set sf = status_filter or '' %}
 <div class="page-header">
     <div>
-        <p class="page-kicker">Contractor</p>
+        <p class="page-kicker">Contractor workbench</p>
         {% if sf == 'pending_upload' %}
         <h1>Upload After Image</h1>
-        <p class="text-muted mb-0">Jobs that still need an after-repair photo. Open a job to upload evidence.</p>
+        <p class="text-muted mb-0">Only jobs that still need an after-repair photo.</p>
         {% elif sf == 'payments' %}
         <h1>Payment Status</h1>
-        <p class="text-muted mb-0">Verified and paid jobs. Track whether payment is pending or processed.</p>
+        <p class="text-muted mb-0">Verified and paid jobs — track payment pending vs processed.</p>
         {% elif sf == 'verified' %}
         <h1>Verified Repairs</h1>
-        <p class="text-muted mb-0">Manager-verified jobs awaiting or ready for payment.</p>
+        <p class="text-muted mb-0">Manager-verified jobs awaiting payment.</p>
         {% elif sf == 'paid' %}
         <h1>Paid Repairs</h1>
         <p class="text-muted mb-0">Jobs marked as payment processed.</p>
+        {% elif sf == 'in_progress' %}
+        <h1>In Progress</h1>
+        <p class="text-muted mb-0">Jobs you marked as work underway.</p>
+        {% elif sf == 'completed' %}
+        <h1>Submitted Jobs</h1>
+        <p class="text-muted mb-0">After photos submitted — waiting on verification.</p>
         {% else %}
         <h1>My Repair Tasks</h1>
-        <p class="text-muted mb-0">All repair jobs assigned to you.</p>
+        <p class="text-muted mb-0">Every repair job assigned to your contractor account.</p>
         {% endif %}
     </div>
     <a class="btn btn-outline-primary" href="{{ url_for('dashboard.index') }}">
@@ -38,14 +46,24 @@
 </div>
 
 {% set stats = stats or {} %}
-{% if sf != 'payments' and sf != 'pending_upload' %}
+{% if sf == 'pending_upload' %}
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-primary"><span>Assigned</span><strong>{{ stats.assigned or 0 }}</strong></div></div>
-    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-warning"><span>In progress</span><strong>{{ stats.in_progress or 0 }}</strong></div></div>
-    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-success"><span>Completed</span><strong>{{ stats.completed or 0 }}</strong></div></div>
-    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-info"><span>Evidence due</span><strong>{{ stats.evidence_due or 0 }}</strong></div></div>
+    <div class="col-md-6">
+        <div class="stat-card stat-warning">
+            <span>Need after photo</span>
+            <strong>{{ jobs|length }}</strong>
+            <small>Open a job → upload after image</small>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card stat-info">
+            <span>Evidence due (all statuses)</span>
+            <strong>{{ stats.evidence_due or 0 }}</strong>
+            <small>Assigned + in progress</small>
+        </div>
+    </div>
 </div>
-{% elif sf == 'payments' %}
+{% elif sf == 'payments' or sf == 'paid' or sf == 'verified' %}
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-warning">
@@ -68,24 +86,16 @@
 </div>
 {% else %}
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl-4">
-        <div class="stat-card stat-warning">
-            <span>Need after photo</span>
-            <strong>{{ jobs|length }}</strong>
-            <small>Open a job to upload</small>
-        </div>
-    </div>
-    <div class="col-sm-6 col-xl-4">
-        <div class="stat-card stat-info">
-            <span>Evidence due (all)</span>
-            <strong>{{ stats.evidence_due or 0 }}</strong>
-        </div>
-    </div>
+    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-primary"><span>Assigned</span><strong>{{ stats.assigned or 0 }}</strong></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-warning"><span>In progress</span><strong>{{ stats.in_progress or 0 }}</strong></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-success"><span>Completed</span><strong>{{ stats.completed or 0 }}</strong></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="stat-card stat-info"><span>Evidence due</span><strong>{{ stats.evidence_due or 0 }}</strong></div></div>
 </div>
 {% endif %}
 
 <div class="content-card">
-    <div class="p-3 border-bottom d-flex flex-wrap gap-2">
+    <div class="p-3 border-bottom d-flex flex-wrap gap-2 align-items-center">
+        <span class="small text-muted me-1">Filter:</span>
         <a class="btn btn-sm {% if not sf %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('contractor.jobs') }}">All tasks</a>
         <a class="btn btn-sm {% if sf == 'pending_upload' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('contractor.jobs', status='pending_upload') }}">Need upload</a>
         <a class="btn btn-sm {% if sf == 'in_progress' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('contractor.jobs', status='in_progress') }}">In progress</a>
@@ -109,8 +119,13 @@
                 {% for job in jobs %}
                 <tr>
                     <td class="fw-semibold">#{{ job.id }}</td>
-                    <td>{{ job.location }}</td>
-                    <td>{{ job.severity }}</td>
+                    <td>
+                        {{ job.location }}
+                        {% if job.damage_type %}
+                        <div class="small text-muted">{{ job.damage_type }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{% with severity=job.severity %}{% include "components/severity_badge.html" %}{% endwith %}</td>
                     <td>{{ job.status_label }}</td>
                     <td>
                         {% if job.payment_label == 'Paid' %}
@@ -124,7 +139,7 @@
                     <td class="text-end">
                         <a class="btn btn-sm {% if sf == 'pending_upload' %}btn-primary{% else %}btn-outline-primary{% endif %}"
                             href="{{ url_for('contractor.job_detail', repair_id=job.id) }}">
-                            {% if sf == 'pending_upload' %}Upload{% else %}Open{% endif %}
+                            {% if sf == 'pending_upload' %}Upload after photo{% else %}Open{% endif %}
                         </a>
                     </td>
                 </tr>
@@ -132,11 +147,21 @@
                 <tr>
                     <td colspan="6" class="text-center text-muted py-5">
                         {% if sf == 'pending_upload' %}
-                        No jobs waiting for an after image.
-                        {% elif sf == 'payments' %}
-                        No verified or paid jobs yet.
+                        <p class="mb-2 fw-semibold">No after-photo uploads waiting</p>
+                        <p class="small mb-0">When a municipal officer assigns you a job, it appears here until you upload the after-repair image.</p>
+                        {% elif sf == 'payments' or sf == 'paid' or sf == 'verified' %}
+                        <p class="mb-2 fw-semibold">No payment records yet</p>
+                        <p class="small mb-0">Jobs show here after field-officer SSIM verification. Payment is marked by municipal staff.</p>
+                        {% elif sf == 'in_progress' %}
+                        <p class="mb-2 fw-semibold">Nothing in progress</p>
+                        <p class="small mb-0">Open an assigned job and mark it in progress when work starts.</p>
+                        {% elif sf == 'completed' %}
+                        <p class="mb-2 fw-semibold">No submitted evidence yet</p>
+                        <p class="small mb-0">After you upload an after image, the job moves here pending verification.</p>
                         {% else %}
-                        No repairs assigned to you yet.
+                        <p class="mb-2 fw-semibold">No repairs assigned to you yet</p>
+                        <p class="small mb-3">Contractors do not create inspections. Municipal admin / field officer assigns repair jobs from AI detections.</p>
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('dashboard.index') }}">Back to dashboard</a>
                         {% endif %}
                     </td>
                 </tr>

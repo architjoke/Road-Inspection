@@ -221,7 +221,7 @@
                     "X-CSRFToken": csrfToken(),
                 },
             });
-            const uploadBody = await uploadResponse.json();
+            const uploadBody = await uploadResponse.json().catch(() => ({}));
             if (!uploadResponse.ok) {
                 throw new Error(uploadBody.error || `Upload HTTP ${uploadResponse.status}`);
             }

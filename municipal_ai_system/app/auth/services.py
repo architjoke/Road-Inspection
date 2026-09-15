@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta
 from flask import current_app
 from sqlalchemy import func, or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.audit import write_super_admin_audit, write_user_audit
-from app.auth.identity import identity_from_super_admin, identity_from_user
+from app.auth.identity import UserIdentity, identity_from_super_admin, identity_from_user
+from app.auth.constants import KIND_USER
 from app.auth.passwords import check_password
 from app.extensions import db
 from app.models import get_model
+from app.services.offline_store import offline_mode_enabled
 
 GENERIC_LOGIN_ERROR = 'Invalid username or password.'
 ACCOUNT_DISABLED = 'This account is disabled.'
@@ -15,6 +18,10 @@ DATABASE_NOT_CONFIGURED = (
     'Database is not configured. Put DATABASE_URL in municipal_ai_system/.env '
     '(RDS URL, not the .env.example placeholder), set OFFLINE_MODE=false in that '
     'same file, then restart Flask. start.bat must not leave the app in offline mode.'
+)
+OFFLINE_LOGIN_HINT = (
+    'Offline demo login failed. Use admin / Admin1213, worker / Worker1213, '
+    'officer / Officer1213, or contractor / Contractor1213.'
 )
 
 
@@ -73,17 +80,49 @@ def _clear_user_lockout(user_row, now):
     db.session.commit()
 
 
+def _authenticate_offline(identifier: str, password: str):
+    """Directory-backed login for OFFLINE_MODE / campus demos (no RDS)."""
+    from app.services.directory_service import find_directory_user_by_identifier
+
+    row = find_directory_user_by_identifier(identifier)
+    if row is None:
+        return None, OFFLINE_LOGIN_HINT
+    if not row.is_active:
+        return None, ACCOUNT_DISABLED
+    if not row.password_hash or not check_password(password, row.password_hash):
+        return None, GENERIC_LOGIN_ERROR
+    identity = UserIdentity(
+        kind=KIND_USER,
+        pk=row.id,
+        username=row.username,
+        email=row.email,
+        full_name=row.full_name,
+        role_name=row.role_name or "field_worker",
+        municipality_id=row.municipality_id,
+        role_id=row.role_id,
+        is_active=row.is_active,
+        municipality_ids=[row.municipality_id] if row.municipality_id else [],
+    )
+    return identity, None
+
+
 def authenticate(identifier, password):
     identifier = (identifier or "").strip()
     if not identifier or not password:
         return None, GENERIC_LOGIN_ERROR
 
-    if not current_app.config.get("DATABASE_CONFIGURED"):
+    # Offline / TESTING: use in-memory directory users (seeded at app start).
+    if offline_mode_enabled() or not current_app.config.get("DATABASE_CONFIGURED"):
+        if offline_mode_enabled() or current_app.config.get("TESTING"):
+            return _authenticate_offline(identifier, password)
         return None, DATABASE_NOT_CONFIGURED
 
     User = get_model("users")
     SuperAdmin = get_model("super_admins")
     if User is None and SuperAdmin is None:
+        offline_id, _offline_err = _authenticate_offline(identifier, password)
+        if offline_id is not None:
+            return offline_id, None
         return None, DATABASE_UNAVAILABLE
 
     now = datetime.utcnow()
@@ -96,8 +135,16 @@ def authenticate(identifier, password):
                 .filter(_identifier_filter(User, identifier))
                 .first()
             )
-        except RuntimeError:
-            return None, DATABASE_NOT_CONFIGURED
+        except (RuntimeError, SQLAlchemyError, OSError):
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            # Prefer offline demo over a blank System Error when RDS is down.
+            offline_id, offline_err = _authenticate_offline(identifier, password)
+            if offline_id is not None:
+                return offline_id, None
+            return None, DATABASE_UNAVAILABLE
 
     if user_row is not None:
         pk = _row_pk(user_row)
@@ -155,8 +202,15 @@ def authenticate(identifier, password):
                 .filter(_identifier_filter(SuperAdmin, identifier))
                 .first()
             )
-        except RuntimeError:
-            return None, DATABASE_NOT_CONFIGURED
+        except (RuntimeError, SQLAlchemyError, OSError):
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            offline_id, offline_err = _authenticate_offline(identifier, password)
+            if offline_id is not None:
+                return offline_id, None
+            return None, DATABASE_UNAVAILABLE
 
     if admin_row is not None:
         sa_pk = getattr(admin_row, "super_admin_id", None) or getattr(

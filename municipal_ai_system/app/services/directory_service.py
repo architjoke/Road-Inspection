@@ -92,6 +92,42 @@ def clear_directory() -> None:
         _next_ward = 1
 
 
+def find_directory_user_by_identifier(identifier: str) -> DirectoryUser | None:
+    needle = (identifier or "").strip().lower()
+    if not needle:
+        return None
+    with _lock:
+        for user in _users.values():
+            if user.username.lower() == needle or user.email.lower() == needle:
+                return user
+    return None
+
+
+def seed_offline_demo_accounts() -> None:
+    """Create campus-demo users when OFFLINE_MODE has an empty directory."""
+    with _lock:
+        if _users:
+            return
+    create_municipality(name="Demo Municipality", code="DEMO")
+    demos = [
+        ("admin", "admin@municipality.local", "Municipal Admin", "Admin1213", "municipal_admin"),
+        ("officer", "officer@municipality.local", "Field Officer", "Officer1213", "field_officer"),
+        ("worker", "worker@municipality.local", "Field Worker", "Worker1213", "field_worker"),
+        ("contractor", "contractor@municipality.local", "Road Contractor", "Contractor1213", "contractor"),
+        ("viewer", "viewer@municipality.local", "Viewer", "Viewer1213", "viewer"),
+    ]
+    for username, email, full_name, password, role_name in demos:
+        create_user(
+            username=username,
+            email=email,
+            full_name=full_name,
+            password=password,
+            role_id=role_name,
+            municipality_id=1,
+            is_active=True,
+        )
+
+
 def list_roles() -> list[Any]:
     if _use_db():
         Model = get_model("roles") or Role

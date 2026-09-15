@@ -323,20 +323,45 @@ def wards_boundaries():
 @api_bp.route("/wards")
 @login_required
 def wards_list():
-    wards = list_wards_for_municipality(_municipality_scope())
-    return jsonify(
-        {
-            "wards": [
-                {
-                    "ward_id": ward.id,
-                    "ward_name": ward.name,
-                    "ward_code": ward.code,
-                    "municipality_id": ward.municipality_id,
-                }
-                for ward in wards
-            ]
-        }
-    )
+    from app.services.offline_store import offline_mode_enabled
+
+    if offline_mode_enabled() or not current_app.config.get("DATABASE_CONFIGURED"):
+        try:
+            wards = list_wards_for_municipality(_municipality_scope())
+        except Exception:
+            wards = []
+        return jsonify(
+            {
+                "wards": [
+                    {
+                        "ward_id": getattr(ward, "id", None),
+                        "ward_name": getattr(ward, "name", None),
+                        "ward_code": getattr(ward, "code", None),
+                        "municipality_id": getattr(ward, "municipality_id", None),
+                    }
+                    for ward in wards
+                ],
+                "mode": "offline",
+            }
+        )
+    try:
+        wards = list_wards_for_municipality(_municipality_scope())
+        return jsonify(
+            {
+                "wards": [
+                    {
+                        "ward_id": ward.id,
+                        "ward_name": ward.name,
+                        "ward_code": ward.code,
+                        "municipality_id": ward.municipality_id,
+                    }
+                    for ward in wards
+                ]
+            }
+        )
+    except Exception:
+        logger.exception("Wards list failed")
+        return jsonify({"wards": [], "error": "query_failed"}), 500
 
 
 @api_bp.route("/analytics/summary")
@@ -448,7 +473,14 @@ def submit_analysis(inspection_id: int):
     else:
         from app.models.inspection import Inspection
 
-        inspection = db.session.get(Inspection, inspection_id)
+        try:
+            inspection = db.session.get(Inspection, inspection_id)
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            inspection = offline_store.get_inspection(inspection_id)
 
     if inspection is None:
         return jsonify({"error": "Inspection not found."}), 404

@@ -98,8 +98,30 @@ def assign_ward_from_gps(
     }
 
 
-def list_wards_for_municipality(municipality_id: int | None = None) -> list[Ward]:
-    query = Ward.query.order_by(Ward.name.asc())
-    if municipality_id is not None:
-        query = query.filter(Ward.municipality_id == municipality_id)
-    return query.all()
+def list_wards_for_municipality(municipality_id: int | None = None) -> list:
+    """Return wards for a municipality; never raises (empty offline / DB down)."""
+    from flask import current_app, has_app_context
+
+    from app.extensions import db
+    from app.services.offline_store import offline_mode_enabled
+
+    if has_app_context():
+        if offline_mode_enabled() or not current_app.config.get("DATABASE_CONFIGURED"):
+            try:
+                from app.services.directory_service import list_directory_wards
+
+                return list_directory_wards(municipality_id=municipality_id)
+            except Exception:
+                return []
+    try:
+        query = Ward.query.order_by(Ward.name.asc())
+        if municipality_id is not None:
+            query = query.filter(Ward.municipality_id == municipality_id)
+        return query.all()
+    except Exception:
+        logger.exception("list_wards_for_municipality failed")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return []

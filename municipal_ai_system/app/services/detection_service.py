@@ -56,6 +56,172 @@ def list_memory_detections(inspection_id: int | None = None) -> list[dict[str, A
         return deepcopy(rows)
 
 
+def _normalize_db_detection_row(row: Any, columns: set[str]) -> dict[str, Any]:
+    data = dict(row) if not hasattr(row, "_mapping") else dict(row._mapping)
+    conf = (
+        data.get("confidence_score")
+        if "confidence_score" in data
+        else data.get("confidence")
+    )
+    damage = (
+        data.get("damage_type")
+        or data.get("defect_type")
+        or data.get("class_name")
+        or data.get("defect_class")
+    )
+    det_id = data.get("detection_id") or data.get("id")
+    bbox = data.get("bounding_box") or data.get("bbox") or data.get("bbox_json") or {}
+    return {
+        "detection_id": det_id,
+        "inspection_id": data.get("inspection_id"),
+        "media_id": data.get("media_id"),
+        "damage_type": damage,
+        "class_name": damage,
+        "confidence": conf,
+        "severity": data.get("severity") or data.get("severity_level"),
+        "priority": data.get("priority") or data.get("priority_level"),
+        "status": data.get("status") or data.get("review_status") or "PENDING_REVIEW",
+        "bounding_box": bbox if isinstance(bbox, dict) else {},
+        "model_version": data.get("model_version"),
+        "created_at": (
+            data.get("created_at").isoformat() + "Z"
+            if hasattr(data.get("created_at"), "isoformat")
+            else data.get("created_at")
+        ),
+        "source": "db",
+    }
+
+
+def try_list_detections_db(inspection_id: int | None = None) -> list[dict[str, Any]]:
+    """Best-effort read from reflected detections table."""
+    try:
+        from sqlalchemy import select
+
+        from app.extensions import db
+        from app.models import get_model
+    except Exception:
+        return []
+
+    Detection = get_model("detections")
+    if Detection is None or not hasattr(Detection, "__table__"):
+        return []
+
+    table = Detection.__table__
+    columns = {c.name for c in table.columns}
+    try:
+        stmt = select(table)
+        if inspection_id is not None and "inspection_id" in columns:
+            stmt = stmt.where(table.c.inspection_id == inspection_id)
+        stmt = stmt.limit(2000)
+        rows = db.session.execute(stmt).mappings().all()
+        return [_normalize_db_detection_row(r, columns) for r in rows]
+    except Exception:
+        logger.exception("Could not list detections from DB")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return []
+
+
+def rehydrate_memory_from_tasks() -> int:
+    """Pull detections from successful analysis tasks into memory if missing."""
+    global _next_id
+    try:
+        from app.workers.task_store import TASK_SUCCEEDED, task_store
+    except Exception:
+        return 0
+
+    added = 0
+    existing_keys = {
+        (r.get("inspection_id"), r.get("detection_id"))
+        for r in list_memory_detections()
+    }
+    for task in task_store.list_all():
+        if task.status != TASK_SUCCEEDED or not task.result_summary:
+            continue
+        dets = task.result_summary.get("detections") or []
+        if not dets:
+            continue
+        insp_id = task.inspection_id
+        if any(k[0] == insp_id for k in existing_keys):
+            continue
+        normalized = []
+        for d in dets:
+            item = dict(d)
+            if "bbox_xyxy" not in item and item.get("bounding_box"):
+                bb = item["bounding_box"]
+                item["bbox_xyxy"] = [
+                    bb.get("x1"),
+                    bb.get("y1"),
+                    bb.get("x2"),
+                    bb.get("y2"),
+                ]
+            if item.get("bbox_xyxy") and all(v is not None for v in item["bbox_xyxy"]):
+                normalized.append(item)
+        if normalized:
+            saved = save_detections_memory(insp_id, task.media_id, normalized)
+            added += len(saved)
+            for s in saved:
+                existing_keys.add((insp_id, s.get("detection_id")))
+            continue
+        for d in dets:
+            with _lock:
+                row = {
+                    "detection_id": _next_id,
+                    "inspection_id": insp_id,
+                    "media_id": task.media_id,
+                    "damage_type": d.get("damage_type") or d.get("class_name"),
+                    "class_name": d.get("class_name") or d.get("damage_type"),
+                    "confidence": d.get("confidence"),
+                    "severity": d.get("severity"),
+                    "priority": d.get("priority"),
+                    "status": d.get("status", "PENDING_REVIEW"),
+                    "bounding_box": d.get("bounding_box") or {},
+                    "model_version": d.get("model_version"),
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                }
+                _memory_detections.append(row)
+                _next_id += 1
+                added += 1
+                existing_keys.add((insp_id, row["detection_id"]))
+    return added
+
+
+def list_detections_merged(inspection_id: int | None = None) -> list[dict[str, Any]]:
+    """Memory first, then hydrate from tasks, then DB rows not already present."""
+    rehydrate_memory_from_tasks()
+    rows = list_memory_detections(inspection_id=inspection_id)
+    seen = {
+        (r.get("inspection_id"), r.get("detection_id"))
+        for r in rows
+        if r.get("detection_id") is not None
+    }
+    # Also key by inspection+damage+confidence to reduce DB duplicates
+    soft_seen = {
+        (
+            r.get("inspection_id"),
+            str(r.get("damage_type") or r.get("class_name") or "").lower(),
+            round(float(r.get("confidence") or 0), 3),
+        )
+        for r in rows
+    }
+    for db_row in try_list_detections_db(inspection_id=inspection_id):
+        key = (db_row.get("inspection_id"), db_row.get("detection_id"))
+        soft = (
+            db_row.get("inspection_id"),
+            str(db_row.get("damage_type") or "").lower(),
+            round(float(db_row.get("confidence") or 0), 3),
+        )
+        if key in seen or soft in soft_seen:
+            continue
+        rows.append(db_row)
+        seen.add(key)
+        soft_seen.add(soft)
+    rows.sort(key=lambda r: int(r.get("detection_id") or 0), reverse=True)
+    return rows
+
+
 def save_detections_memory(
     inspection_id: int,
     media_id: int | None,

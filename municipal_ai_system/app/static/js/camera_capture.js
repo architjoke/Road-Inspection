@@ -45,8 +45,7 @@
             }
 
             if (!navigator.geolocation) {
-                // Offline/test fallback coordinates (Kolhapur area used elsewhere)
-                resolve({ lat: 16.705, lng: 74.2431, accuracy: null, source: "fallback" });
+                resolve(null);
                 return;
             }
 
@@ -59,10 +58,8 @@
                         source: "browser",
                     });
                 },
-                () => {
-                    resolve({ lat: 16.705, lng: 74.2431, accuracy: null, source: "fallback" });
-                },
-                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+                () => resolve(null),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
         });
 
@@ -191,6 +188,10 @@
 
             setStatus("Reading GPS…");
             const gps = await readGps();
+            if (!gps || gps.lat == null || gps.lng == null) {
+                setStatus("GPS required — allow location or enter coordinates on the form, then capture again.");
+                return;
+            }
             applyGpsToForm(gps);
 
             const locationName =
@@ -210,7 +211,7 @@
             if (gps.accuracy != null) {
                 form.append("gps_accuracy_meters", String(gps.accuracy));
             }
-            form.append("notes", "Phase 11 live camera capture");
+            form.append("notes", "Live camera capture");
 
             const uploadResponse = await fetch("/api/inspections/upload", {
                 method: "POST",
@@ -248,6 +249,17 @@
                 })
             );
 
+            stopCamera();
+            const inspectionId = uploadBody.inspection_id;
+            if (inspectionId) {
+                setStatus("Upload complete — opening inspection…");
+                window.RoadInspectionUI?.toast?.(
+                    "Capture analyzed — opening inspection",
+                    "success"
+                );
+                window.location.href = "/inspections/" + inspectionId;
+                return;
+            }
             setStatus("Plotted! Open map to focus the new marker.");
             if (openMapBtn) {
                 openMapBtn.classList.remove("d-none");

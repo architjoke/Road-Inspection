@@ -35,14 +35,14 @@
         <div class="stat-card stat-warning">
             <span>Processing</span>
             <strong>{{ cards.processing if cards.processing is defined else 0 }}</strong>
-            <small>Waiting on AI analysis</small>
+            <small>AI analysis / pending review</small>
         </div>
     </div>
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-success">
             <span>Detections</span>
             <strong>{{ cards.total_detections if cards.total_detections is defined else 0 }}</strong>
-            <small>From recent analyses</small>
+            <small>From YOLO analysis</small>
         </div>
     </div>
 </div>
@@ -51,7 +51,7 @@
     <div class="content-card-header">
         <div>
             <h2>Live camera capture</h2>
-            <p>Uses the phone rear camera and GPS at the moment you tap capture. No separate app required.</p>
+            <p>Rear camera + GPS. Upload starts YOLO detection and auto-creates repair jobs for municipal assignment.</p>
         </div>
     </div>
     <div class="p-3 p-md-4">
@@ -66,7 +66,7 @@
             If you previously denied access, enable Camera and Location for Safari in iOS Settings.
         </div>
 
-        <div class="fw-capture-stage" id="fw-live-panel">
+        <div class="fw-capture-stage d-none" id="fw-live-panel">
             <video id="fw-video" class="fw-capture-video" playsinline autoplay muted></video>
             <canvas id="fw-canvas" class="d-none"></canvas>
             <div class="fw-capture-gps" id="fw-gps-status">GPS idle — start the camera to acquire location</div>
@@ -74,7 +74,11 @@
 
         <div class="fw-capture-stage d-none" id="fw-preview-panel">
             <img id="fw-preview" class="fw-capture-preview" alt="Captured inspection preview">
-            <div class="fw-capture-gps is-ok">Frame frozen — review GPS, then upload or retake</div>
+            <div class="fw-capture-gps" id="fw-preview-gps">Frame frozen — review GPS, then upload or retake</div>
+        </div>
+
+        <div class="fw-idle-hint alert alert-light border mb-0" id="fw-idle-hint">
+            Tap <strong>Start camera</strong> to begin live capture with GPS.
         </div>
 
         <p class="fw-coords text-muted mt-3 mb-0" id="fw-coords">Coordinates will appear here after GPS lock.</p>
@@ -103,7 +107,7 @@
         </div>
     </div>
     <div class="quick-actions">
-        <a class="quick-action" href="{{ url_for('inspections.new') }}">
+        <a class="quick-action" href="{{ url_for('inspections.new', mode='gallery') }}">
             <i class="fa-solid fa-cloud-arrow-up"></i>
             Upload from gallery
         </a>

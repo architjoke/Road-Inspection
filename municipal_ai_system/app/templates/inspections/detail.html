@@ -71,16 +71,32 @@
         <div class="content-card">
             <div class="content-card-header">
                 <div>
-                    <h2>Before image</h2>
-                    <p>Original uploaded evidence for this location.</p>
+                    <h2>AI detections</h2>
+                    <p>Annotated output from your YOLO model after analysis.</p>
                 </div>
             </div>
 
-            <div class="p-4">
+            <div class="p-4" x-data>
+                {% if annotated_url %}
+                <p class="small text-muted mb-2">AI detections (bounding boxes from your model)</p>
+                <img class="inspection-image-preview" src="{{ annotated_url }}" alt="Annotated detections"
+                    role="button" style="cursor:zoom-in"
+                    @click="$dispatch('open-media-modal', { src: '{{ annotated_url }}', title: 'AI detections' })">
                 {% if before_url %}
-                <img class="inspection-image-preview" src="{{ before_url }}" alt="Before image">
-                {% elif before_missing %}
-                <div class="alert alert-warning mb-0">No before image available for this location</div>
+                <details class="mt-3">
+                    <summary class="small text-muted">Show original upload</summary>
+                    <img class="inspection-image-preview mt-2" src="{{ before_url }}" alt="Original before image"
+                        role="button" style="cursor:zoom-in"
+                        @click="$dispatch('open-media-modal', { src: '{{ before_url }}', title: 'Original upload' })">
+                </details>
+                {% endif %}
+                {% elif before_url %}
+                <img class="inspection-image-preview" src="{{ before_url }}" alt="Before image"
+                    role="button" style="cursor:zoom-in"
+                    @click="$dispatch('open-media-modal', { src: '{{ before_url }}', title: 'Before image' })">
+                <p class="small text-muted mt-2 mb-0">
+                    Annotated boxes appear here after YOLO analysis finishes.
+                </p>
                 {% else %}
                 <div class="alert alert-warning mb-0">No before image available for this location</div>
                 {% endif %}
@@ -110,7 +126,7 @@
             <div class="content-card-header">
                 <div>
                     <h2>AI Processing</h2>
-                    <p>Detection list appears after Phase 6/7 analysis.</p>
+                    <p>YOLO analysis runs automatically after upload.</p>
                 </div>
             </div>
             <div class="p-4">
@@ -119,17 +135,90 @@
                     Inspection record created
                 </div>
                 <div class="phase-status-row">
+                    {% if inspection.location_latitude and inspection.location_longitude %}
                     <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
                     GPS location captured
+                    {% else %}
+                    <span class="phase-status-wait"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    GPS not captured
+                    {% endif %}
                 </div>
                 <div class="phase-status-row">
+                    {% if before_url %}
                     <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
-                    Media saved (ImageKit or local)
+                    Media saved
+                    {% else %}
+                    <span class="phase-status-wait"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    Media missing
+                    {% endif %}
                 </div>
+                {% if analysis_done %}
+                <div class="phase-status-row">
+                    <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
+                    YOLO analysis complete
+                    ({{ inspection.total_detections or detections|length }} detection{{ 's' if (inspection.total_detections or detections|length) != 1 else '' }})
+                </div>
+                {% if linked_repairs %}
+                <div class="phase-status-row">
+                    <span class="phase-status-check"><i class="fa-solid fa-check"></i></span>
+                    {{ linked_repairs|length }} repair job{{ 's' if linked_repairs|length != 1 else '' }} ready to assign
+                </div>
+                {% endif %}
+                {% else %}
                 <div class="phase-status-row text-muted">
                     <span class="phase-status-wait"><i class="fa-solid fa-hourglass-half"></i></span>
-                    YOLO AI analysis will start in a later phase
+                    YOLO analysis in progress — refresh this page shortly
                 </div>
+                {% endif %}
+
+                {% set can_manage_repairs = current_user.is_super_admin() or current_user.is_municipal_admin() or current_user.is_field_officer() %}
+                {% if detections %}
+                <ul class="list-unstyled mt-3 mb-0">
+                    {% for det in detections %}
+                    <li class="small mb-2">
+                        {% if can_manage_repairs and det.detection_id %}
+                        <a href="{{ url_for('protected.detection_detail', detection_id=det.detection_id) }}">
+                            <strong>{{ det.damage_type or det.class_name or "damage" }}</strong>
+                        </a>
+                        {% else %}
+                        <strong>{{ det.damage_type or det.class_name or "damage" }}</strong>
+                        {% endif %}
+                        · conf {{ '%.2f'|format(det.confidence|float) if det.confidence is not none else "—" }}
+                        {% if det.severity %} · {{ det.severity }}{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if can_manage_repairs %}
+                <div class="mt-3 d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm btn-primary"
+                       href="{{ url_for('protected.repair_create', inspection_id=inspection.id) }}">
+                        Assign repair to contractor
+                    </a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('protected.detections') }}">
+                        Open AI detections
+                    </a>
+                </div>
+                {% if linked_repairs %}
+                <ul class="list-unstyled mt-3 mb-0">
+                    {% for job in linked_repairs %}
+                    <li class="small mb-1">
+                        <a href="{{ url_for('protected.repair_detail', repair_id=job.id) }}">
+                            Repair #{{ job.id }}
+                        </a>
+                        · {{ job.damage_type }} ·
+                        {% with status=job.status %}{% include "components/status_badge.html" %}{% endwith %}
+                        {% if job.assignee_name or job.assignee_id %}
+                        · {{ job.assignee_name or ('user ' ~ job.assignee_id) }}
+                        {% else %}
+                        · <span class="text-muted">unassigned</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% endif %}
             </div>
         </div>
     </div>
@@ -142,9 +231,9 @@
                 </div>
             </div>
             <div class="p-4">
-                <span class="badge text-bg-warning fs-6">
-                    {{ inspection.status.replace("_", " ").title() }}
-                </span>
+                {% with status=inspection.status, extra_class='fs-6' %}
+                {% include "components/status_badge.html" %}
+                {% endwith %}
             </div>
         </div>
 

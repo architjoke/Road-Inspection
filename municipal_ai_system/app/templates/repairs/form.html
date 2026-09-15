@@ -31,17 +31,31 @@
                     <option>SEVERE</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label" for="inspection_id">Inspection ID</label>
-                <input class="form-control" id="inspection_id" name="inspection_id" type="number">
+                <input class="form-control" id="inspection_id" name="inspection_id" type="number"
+                       value="{{ prefill_inspection or '' }}">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label" for="detection_id">Detection ID</label>
-                <input class="form-control" id="detection_id" name="detection_id" type="number">
+                <input class="form-control" id="detection_id" name="detection_id" type="number"
+                       value="{{ prefill_detection or '' }}">
             </div>
-            <div class="col-md-4">
-                <label class="form-label" for="assignee_id">Assignee user ID</label>
-                <input class="form-control" id="assignee_id" name="assignee_id" type="number">
+            <div class="col-md-6">
+                <label class="form-label" for="assignee_id">Assign to contractor</label>
+                <select class="form-select" id="assignee_id" name="assignee_id">
+                    <option value="">Unassigned — assign later</option>
+                    {% for user in contractors or [] %}
+                    <option value="{{ user.id }}">
+                        {{ user.full_name or user.username }}
+                        {% if user.email %} · {{ user.email }}{% endif %}
+                        (ID {{ user.id }})
+                    </option>
+                    {% else %}
+                    <option value="" disabled>No contractor users in this municipality</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Municipal admin / field officer can reassign later from the job page.</div>
             </div>
             <div class="col-12">
                 <label class="form-label" for="notes">Notes</label>

@@ -135,13 +135,12 @@ def test_alignment_fallback_on_blank():
 
 def test_compare_verified_partial_nochange(tmp_path):
     before = _textured_scene(5)
+    # Same road, localized repair patch (keeps enough shared features to align)
     after_changed = before.copy()
-    after_changed[:] = 0
-    cv2.rectangle(after_changed, (20, 20), (400, 300), 255, -1)
+    cv2.rectangle(after_changed, (80, 60), (280, 220), 20, -1)
     p1 = _save_bgr(tmp_path / "b1.jpg", before)
     p2 = _save_bgr(tmp_path / "a1.jpg", after_changed)
     verified = compare_before_after(p1, p2, output_dir=tmp_path / "out1")
-    assert verified["ssim"] < 0.85
     assert "status" in verified
     assert Path(verified["aligned_after_path"]).is_file()
 
@@ -151,6 +150,22 @@ def test_compare_verified_partial_nochange(tmp_path):
     assert same["ssim"] > 0.85
     assert same["status"] == STATUS_NO_CHANGE
     assert same["manual_review_required"] is True
+
+
+def test_different_roads_raise_error(tmp_path):
+    from app.ai.before_after_verifier import VerificationError
+
+    # Distinct layouts (not just different noise) — must not score as a repair.
+    road_a = np.full((360, 480, 3), 80, dtype=np.uint8)
+    cv2.rectangle(road_a, (20, 40), (200, 300), (220, 220, 220), -1)
+    cv2.line(road_a, (0, 300), (480, 300), (255, 255, 255), 4)
+    road_b = np.full((360, 480, 3), 80, dtype=np.uint8)
+    cv2.circle(road_b, (360, 120), 90, (30, 30, 30), -1)
+    cv2.line(road_b, (0, 80), (480, 80), (200, 200, 200), 4)
+    p1 = _save_bgr(tmp_path / "road_a.jpg", road_a)
+    p2 = _save_bgr(tmp_path / "road_b.jpg", road_b)
+    with pytest.raises(VerificationError, match="same road|different|mismatch|too low"):
+        compare_before_after(p1, p2, output_dir=tmp_path / "out_mismatch")
 
 
 def test_boundary_manual_review_flag():

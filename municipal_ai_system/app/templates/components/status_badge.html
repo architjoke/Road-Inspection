@@ -1,1 +1,18 @@
-<span class="badge text-bg-secondary">{{ (status or '')|replace('_', ' ')|title }}</span>
+{# Map inspection / media / repair status strings to Bootstrap badge colors. #}
+{% set raw = (status or '')|string|lower %}
+{% if raw in ['completed', 'verified', 'approved', 'done', 'processed', 'closed', 'paid', 'analyzed'] %}
+{% set tone = 'success' %}
+{% elif raw in ['pending_review', 'pending', 'submitted', 'queued', 'uploaded', 'open', 'assigned'] %}
+{% set tone = 'info' %}
+{% elif raw in ['processing', 'analyzing', 'in_progress', 'pending_analysis', 'evidence_uploaded'] %}
+{% set tone = 'primary' %}
+{% elif raw in ['failed', 'rejected', 'error', 'cancelled', 'canceled'] %}
+{% set tone = 'danger' %}
+{% elif raw in ['needs_review', 'manual_review', 'partial', 'warning'] %}
+{% set tone = 'warning' %}
+{% else %}
+{% set tone = 'secondary' %}
+{% endif %}
+<span class="badge text-bg-{{ tone }}{% if extra_class %} {{ extra_class }}{% endif %}">
+  {{ (status or '')|replace('_', ' ')|title }}
+</span>

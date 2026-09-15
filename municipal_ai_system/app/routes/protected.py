@@ -27,14 +27,18 @@ from app.services.directory_service import (
 )
 from app.services.offline_store import offline_mode_enabled, offline_store
 from app.services.repair_service import (
-    create_repair,
     get_repair,
     list_repairs,
     repair_stats,
     update_repair,
 )
 from app.services.ward_service import list_wards_for_municipality
-
+from app.services.workflow_service import (
+    create_linked_repair,
+    list_contractor_users,
+    resolve_assignee_name,
+    save_after_evidence,
+)
 
 protected_bp = Blueprint("protected", __name__)
 
@@ -271,14 +275,30 @@ def detection_detail(detection_id: int):
         action = request.form.get("action")
         if action == "create_repair":
             row = get_detection_for_review(detection_id) or {}
-            repair = create_repair(
+            assignee_id = _safe_int(request.form.get("assignee_id"))
+            existing_id = row.get("repair_id")
+            if existing_id:
+                repair = update_repair(
+                    int(existing_id),
+                    assignee_id=assignee_id,
+                    assignee_name=resolve_assignee_name(assignee_id) if assignee_id else None,
+                    notes=request.form.get("notes") or None,
+                )
+                flash(
+                    f"Repair job #{existing_id} updated"
+                    + (" and assigned." if assignee_id else "."),
+                    "success",
+                )
+                return redirect(url_for("protected.repair_detail", repair_id=int(existing_id)))
+            repair = create_linked_repair(
                 inspection_id=row.get("inspection_id"),
                 detection_id=detection_id,
                 damage_type=row.get("damage_type") or row.get("class_name"),
                 severity=row.get("severity"),
+                assignee_id=assignee_id,
                 notes=request.form.get("notes"),
             )
-            flash(f"Repair job #{repair['id']} created.", "success")
+            flash(f"Repair job #{repair['id']} created and linked to this detection.", "success")
             return redirect(url_for("protected.repair_detail", repair_id=repair["id"]))
         try:
             updated = review_detection(
@@ -300,10 +320,30 @@ def detection_detail(detection_id: int):
     if payload is None:
         flash("Detection not found.", "danger")
         return redirect(url_for("protected.detections"))
+    contractors = list_contractor_users(_municipality_scope())
+    before_url = None
+    annotated_url = None
+    try:
+        from app.services.workflow_service import get_inspection_by_id
+        from app.utils.media_urls import (
+            annotated_media_url,
+            get_before_media,
+            media_public_url,
+        )
+
+        inspection = get_inspection_by_id(payload.get("inspection_id"))
+        media = get_before_media(inspection) if inspection else None
+        before_url = media_public_url(media)
+        annotated_url = annotated_media_url(media)
+    except Exception:
+        current_app.logger.exception("Could not resolve detection media")
     return render_template(
         "detections/detail.html",
         page_title=f"Detection {detection_id}",
         detection=payload,
+        contractors=contractors,
+        before_url=before_url,
+        annotated_url=annotated_url,
     )
 
 
@@ -332,13 +372,29 @@ def repairs():
 @roles_required("super_admin", "municipal_admin", "field_officer")
 def repairs_verify():
     inspection_id = request.args.get("inspection_id", type=int)
+    repair_id = request.args.get("repair_id", type=int)
     before_url = None
+    after_url = None
     before_error = None
+    before_has_boxes = False
+    repair = get_repair(repair_id) if repair_id else None
+    if repair and not inspection_id:
+        inspection_id = repair.get("inspection_id")
+    pending_verify = []
+    if not repair_id and not inspection_id:
+        pending_verify = list_repairs(status="evidence_uploaded")
+        # Also surface partial / rejected-for-rework if present
+        for status in ("partial", "rejected"):
+            pending_verify.extend(list_repairs(status=status))
     if inspection_id:
         from app.services.offline_store import offline_mode_enabled, offline_store
-        from app.utils.media_urls import get_before_media, media_public_url
+        from app.utils.media_urls import (
+            annotated_media_url,
+            get_before_media,
+            media_public_url,
+        )
 
-        inspection = offline_store.get_inspection(inspection_id)
+        inspection = offline_store.get_inspection(inspection_id) if offline_mode_enabled() else None
         if inspection is None:
             Inspection = get_model("inspections")
             if Inspection is not None:
@@ -347,42 +403,69 @@ def repairs_verify():
                 except Exception:
                     inspection = None
         media = get_before_media(inspection) if inspection else None
-        before_url = media_public_url(media)
+        annotated = annotated_media_url(media)
+        original = media_public_url(media)
+        # Prefer annotated (bounding boxes) for the verification UI.
+        before_url = annotated or original
+        before_has_boxes = bool(annotated)
         if not before_url:
-            before_error = "No before image available for this location"
+            before_error = "No before image available for this inspection ID"
+    if repair and repair.get("evidence_path"):
+        after_url = url_for("protected.repair_after_image", repair_id=repair["id"])
     return render_template(
         "repairs/manager.html",
         inspection_id=inspection_id,
+        repair_id=repair_id,
+        repair=repair,
         before_url=before_url,
+        after_url=after_url,
         before_error=before_error,
+        before_has_boxes=before_has_boxes,
+        pending_verify=pending_verify,
     )
+
+
+@protected_bp.route("/repairs/<int:repair_id>/after-image")
+@roles_required(*STAFF_ROLES)
+def repair_after_image(repair_id: int):
+    from pathlib import Path
+
+    from flask import abort, send_file
+
+    row = get_repair(repair_id)
+    if row is None or not row.get("evidence_path"):
+        abort(404)
+    path = Path(row["evidence_path"])
+    if not path.is_file():
+        abort(404)
+    return send_file(path, mimetype="image/jpeg", as_attachment=False, download_name=path.name)
 
 
 @protected_bp.route("/repairs/new", methods=["GET", "POST"])
 @roles_required("super_admin", "municipal_admin", "field_officer")
 def repair_create():
     if request.method == "POST":
-        row = create_repair(
+        assignee_id = _safe_int(request.form.get("assignee_id"))
+        row = create_linked_repair(
             inspection_id=_safe_int(request.form.get("inspection_id")),
             detection_id=_safe_int(request.form.get("detection_id")),
             location=request.form.get("location"),
             damage_type=request.form.get("damage_type"),
             severity=request.form.get("severity") or "MODERATE",
-            assignee_id=_safe_int(request.form.get("assignee_id")),
+            assignee_id=assignee_id,
             notes=request.form.get("notes"),
         )
         flash(f"Repair job #{row['id']} created.", "success")
         return redirect(url_for("protected.repair_detail", repair_id=row["id"]))
-    contractors = [
-        u
-        for u in list_users(municipality_id=_municipality_scope())
-        if "contractor" in (getattr(u, "role_name", "") or "").lower()
-        or "contractor" in (getattr(u, "display_role_name", "") or "").lower()
-    ]
+    contractors = list_contractor_users(_municipality_scope())
+    prefill_inspection = request.args.get("inspection_id", type=int)
+    prefill_detection = request.args.get("detection_id", type=int)
     return render_template(
         "repairs/form.html",
         page_title="Assign Repair",
         contractors=contractors,
+        prefill_inspection=prefill_inspection,
+        prefill_detection=prefill_detection,
     )
 
 
@@ -397,18 +480,22 @@ def repair_detail(repair_id: int):
         status = request.form.get("status")
         assignee_id = _safe_int(request.form.get("assignee_id"))
         notes = request.form.get("notes")
-        updated = update_repair(
+        update_repair(
             repair_id,
             status=status,
             assignee_id=assignee_id,
+            assignee_name=resolve_assignee_name(assignee_id) if assignee_id else None,
             notes=notes,
         )
         pay = request.form.get("payment_status")
-        if pay in {"pending", "verified", "paid"}:
-            update_repair(repair_id, payment_status=pay, status="paid" if pay == "paid" else status)
+        if pay == "paid":
+            # Paid is terminal for payment; keep job verified/closed semantics.
+            update_repair(repair_id, payment_status="paid", status="paid")
+        elif pay in {"pending", "verified"}:
+            update_repair(repair_id, payment_status=pay)
         flash("Repair job updated.", "success")
         return redirect(url_for("protected.repair_detail", repair_id=repair_id))
-    contractors = list_users(municipality_id=_municipality_scope())
+    contractors = list_contractor_users(_municipality_scope())
     return render_template(
         "repairs/detail.html",
         page_title=f"Repair #{repair_id}",
@@ -426,21 +513,29 @@ def repair_evidence(repair_id: int):
         return redirect(url_for("protected.repairs"))
     if request.method == "POST":
         uploaded = request.files.get("evidence")
-        filename = uploaded.filename if uploaded and uploaded.filename else None
-        update_repair(
-            repair_id,
-            evidence_note=request.form.get("evidence_note"),
-            evidence_filename=filename,
-            status="evidence_uploaded",
+        fields = save_after_evidence(repair_id, uploaded)
+        if not fields:
+            flash("Choose an after-repair image to upload.", "danger")
+            return render_template(
+                "repairs/upload_evidence.html",
+                page_title="Upload repair evidence",
+                repair=row,
+            )
+        fields["evidence_note"] = request.form.get("evidence_note")
+        update_repair(repair_id, **fields)
+        flash("Evidence saved. Run SSIM verification next.", "success")
+        return redirect(
+            url_for(
+                "protected.repairs_verify",
+                repair_id=repair_id,
+                inspection_id=row.get("inspection_id"),
+            )
         )
-        flash("Evidence recorded. Run SSIM verification when before/after photos are ready.", "success")
-        return redirect(url_for("protected.repairs_verify"))
     return render_template(
         "repairs/upload_evidence.html",
         page_title="Upload repair evidence",
         repair=row,
     )
-
 
 @protected_bp.route("/repairs/locations")
 @roles_required(*STAFF_ROLES)
@@ -511,6 +606,7 @@ def reports():
     return render_template(
         "reports/list.html",
         inspections=inspections,
+        offline_mode=offline_mode_enabled(),
     )
 
 

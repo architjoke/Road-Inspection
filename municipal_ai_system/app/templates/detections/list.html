@@ -1,0 +1,14 @@
+{# Legacy stub — live AI review is detections/review.html via protected.detections #}
+{% extends "base.html" %}
+{% block title %}AI Detections{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">AI review</p>
+        <h1>AI Detections</h1>
+        <p class="text-muted mb-0">Redirecting to the detection review workspace.</p>
+    </div>
+</div>
+<p><a class="btn btn-primary" href="{{ url_for('protected.detections') }}">Open detection review</a></p>
+<meta http-equiv="refresh" content="0;url={{ url_for('protected.detections') }}">
+{% endblock %}

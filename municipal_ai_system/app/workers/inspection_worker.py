@@ -100,18 +100,26 @@ def _update_inspection_status(inspection_id: int, status: str, total_detections:
             pass
 
 
-def _update_media_status(media_id: int | None, status: str):
+def _update_media_status(
+    media_id: int | None,
+    status: str,
+    *,
+    annotated_path: str | Path | None = None,
+):
     if media_id is None:
         return
+    annotated_str = str(annotated_path) if annotated_path else None
     try:
         from app.services.offline_store import offline_mode_enabled, offline_store
 
         if offline_mode_enabled():
-            offline_store.update_media(
-                media_id,
-                processing_status=status,
-                updated_at=datetime.utcnow(),
-            )
+            kwargs = {
+                "processing_status": status,
+                "updated_at": datetime.utcnow(),
+            }
+            if annotated_str:
+                kwargs["thumbnail_path"] = annotated_str
+            offline_store.update_media(media_id, **kwargs)
             return
 
         from app.extensions import db
@@ -122,6 +130,8 @@ def _update_media_status(media_id: int | None, status: str):
             return
         media.processing_status = status
         media.updated_at = datetime.utcnow()
+        if annotated_str:
+            media.thumbnail_path = annotated_str
         db.session.commit()
     except Exception:
         logger.exception("Could not update media %s status", media_id)
@@ -429,12 +439,34 @@ def analyze_inspection_job(
         )
         task_store.update(task_id, progress=90.0)
 
+        auto_repairs = []
+        try:
+            from app.services.workflow_service import auto_create_repairs_from_detections
+
+            auto_repairs = auto_create_repairs_from_detections(
+                inspection_id=inspection_id,
+                detections=all_detections,
+                memory_rows=persist_result.get("detections") or [],
+            )
+            if auto_repairs:
+                logger.info(
+                    "Auto-created %s unassigned repair job(s) for inspection %s",
+                    len(auto_repairs),
+                    inspection_id,
+                )
+        except Exception:
+            logger.exception("Auto repair creation failed for inspection %s", inspection_id)
+
         _update_inspection_status(
             inspection_id,
             PENDING_REVIEW,
             total_detections=len(all_detections),
         )
-        _update_media_status(media.id, MEDIA_PROCESSED)
+        _update_media_status(
+            media.id,
+            MEDIA_PROCESSED,
+            annotated_path=annotated_path,
+        )
 
         summary = {
             "inspection_id": inspection_id,
@@ -444,6 +476,7 @@ def analyze_inspection_job(
             "db_count": persist_result["db_count"],
             "annotated_path": annotated_path,
             "detections": all_detections,
+            "auto_repair_ids": [r.get("id") for r in auto_repairs],
             "segmentation": segmentation_section,
             "depth": depth_section,
             "severity": severity_section,

@@ -12,9 +12,9 @@
         </p>
     </div>
 
-    <a class="btn btn-primary" href="{{ url_for('inspections.new') }}">
+    <a class="btn btn-primary" href="{{ url_for('dashboard.index') }}#live-capture">
         <i class="fa-solid fa-circle-plus me-2"></i>
-        New Inspection
+        Capture Inspection
     </a>
 </div>
 
@@ -52,9 +52,9 @@
                     </td>
 
                     <td>
-                        <span class="badge text-bg-warning">
-                            {{ inspection.status.replace("_", " ").title() }}
-                        </span>
+                        {% with status=inspection.status %}
+                        {% include "components/status_badge.html" %}
+                        {% endwith %}
                     </td>
 
                     <td class="text-end">
@@ -72,8 +72,8 @@
                         You have not submitted an inspection yet.
 
                         <div class="mt-3">
-                            <a class="btn btn-primary btn-sm" href="{{ url_for('inspections.new') }}">
-                                Create Your First Inspection
+                            <a class="btn btn-primary btn-sm" href="{{ url_for('dashboard.index') }}#live-capture">
+                                Capture Your First Inspection
                             </a>
                         </div>
                     </td>

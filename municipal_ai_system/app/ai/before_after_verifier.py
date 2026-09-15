@@ -21,8 +21,14 @@ STATUS_VERIFIED = "Repair Verified"
 STATUS_PARTIAL = "Partial Repair - Manual Review Required"
 STATUS_NO_CHANGE = "No Change Detected - Manual Review Required"
 STATUS_ALIGNMENT_FAILED = "Alignment Uncertain - Manual Review Required"
+STATUS_SCENE_MISMATCH = "Different Road Images - Comparison Rejected"
 
-RULE_VERSION = "phase12-v1"
+RULE_VERSION = "phase12-v2"
+
+# Same-scene gate: different roads usually fail ORB matching hard.
+MIN_SAME_SCENE_MATCHES = 12
+MIN_SAME_SCENE_INLIER_RATIO = 0.12
+MIN_HISTOGRAM_CORR = 0.35
 
 
 class VerificationError(Exception):
@@ -223,6 +229,66 @@ def mean_absolute_diff(img_a: np.ndarray, img_b: np.ndarray) -> float:
     return float(np.mean(np.abs(a - b)) / 255.0)
 
 
+def _histogram_correlation(img_a: np.ndarray, img_b: np.ndarray) -> float:
+    a = _to_gray(img_a)
+    b = _to_gray(img_b)
+    if a.shape != b.shape:
+        b = cv2.resize(b, (a.shape[1], a.shape[0]), interpolation=cv2.INTER_AREA)
+    hist_a = cv2.calcHist([a], [0], None, [64], [0, 256])
+    hist_b = cv2.calcHist([b], [0], None, [64], [0, 256])
+    cv2.normalize(hist_a, hist_a)
+    cv2.normalize(hist_b, hist_b)
+    corr = cv2.compareHist(hist_a, hist_b, cv2.HISTCMP_CORREL)
+    return float(corr)
+
+
+def assert_same_road_scene(
+    before_bgr: np.ndarray,
+    after_bgr: np.ndarray,
+    alignment: AlignmentResult,
+) -> None:
+    """
+    Reject clearly different road/site photos.
+
+    Same location with repair work should still share enough ORB features /
+    histogram structure. Unrelated roads must not produce a Repair Verified result.
+    """
+    hist_corr = _histogram_correlation(before_bgr, after_bgr)
+    reasons: list[str] = []
+
+    if alignment.method == "resize_fallback" and alignment.match_count < MIN_SAME_SCENE_MATCHES:
+        reasons.append(
+            f"feature matches too low ({alignment.match_count} < {MIN_SAME_SCENE_MATCHES})"
+        )
+    if not alignment.success and alignment.inlier_ratio < MIN_SAME_SCENE_INLIER_RATIO:
+        reasons.append(
+            f"alignment inliers too low ({alignment.inlier_ratio:.2f})"
+        )
+    if hist_corr < MIN_HISTOGRAM_CORR and not alignment.success:
+        reasons.append(f"image appearance mismatch (hist corr {hist_corr:.2f})")
+
+    # Strong positive gate: successful alignment with enough matches → allow
+    if (
+        alignment.success
+        and alignment.match_count >= MIN_SAME_SCENE_MATCHES
+        and alignment.inlier_ratio >= MIN_SAME_SCENE_INLIER_RATIO
+    ):
+        return
+
+    # Near-duplicate frames (same photo / tiny change) can still pass with
+    # excellent histogram agreement AND enough raw matches, even if RANSAC is soft.
+    if hist_corr >= 0.97 and alignment.match_count >= MIN_SAME_SCENE_MATCHES:
+        return
+
+    if reasons or not alignment.success:
+        detail = "; ".join(reasons) if reasons else "scenes could not be aligned"
+        raise VerificationError(
+            "Before and after images do not appear to be the same road location. "
+            "Use the after photo for this inspection’s road, not a different site. "
+            f"({detail})"
+        )
+
+
 def compare_before_after(
     before_path: str | Path,
     after_path: str | Path,
@@ -231,16 +297,21 @@ def compare_before_after(
     verified_max: float = SSIM_VERIFIED_MAX,
     partial_max: float = SSIM_PARTIAL_MAX,
     roi: tuple[int, int, int, int] | None = None,
+    require_same_scene: bool = True,
 ) -> dict[str, Any]:
     """
-    Full verification pipeline: align → SSIM → classify.
+    Full verification pipeline: align → same-scene gate → SSIM → classify.
 
     Never downloads models. Uses OpenCV ORB only.
+    Raises VerificationError when photos are clearly different roads.
     """
     before = _read_bgr(before_path)
     after = _read_bgr(after_path)
     alignment = align_images(before, after)
     aligned = alignment.aligned_after
+
+    if require_same_scene:
+        assert_same_road_scene(before, after, alignment)
 
     if roi is not None:
         x1, y1, x2, y2 = roi
@@ -299,8 +370,8 @@ def compare_before_after(
         "after_path": str(after_path),
         "rule_version": RULE_VERSION,
         "metric_notes": (
-            "SSIM measures structural similarity (unitless). "
-            "Lower SSIM ⇒ more visual change after alignment."
+            "SSIM measures structural similarity after same-scene alignment. "
+            "Different road photos are rejected before scoring."
         ),
     }
 

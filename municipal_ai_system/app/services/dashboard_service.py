@@ -42,7 +42,7 @@ def get_analytics_summary(municipality_id: int | None = None) -> dict:
 
 
 def _offline_analytics(municipality_id: int | None = None) -> dict:
-    from app.services.detection_service import list_memory_detections
+    from app.services.detection_service import list_detections_merged
     from app.services.offline_store import offline_store
     from app.services.repair_service import repair_stats
 
@@ -51,7 +51,7 @@ def _offline_analytics(municipality_id: int | None = None) -> dict:
         inspections = [
             item for item in inspections if item.municipality_id == municipality_id
         ]
-    detections = list_memory_detections()
+    detections = list_detections_merged()
     severity_by_label = {"SEVERE": 0, "MODERATE": 0, "MINOR": 0}
     damage_by_type: dict[str, int] = {}
     scores = []
@@ -75,20 +75,22 @@ def _offline_analytics(municipality_id: int | None = None) -> dict:
             "Alligator Crack": 0,
         }
     stats = repair_stats()
+    processing = len(
+        [
+            i
+            for i in inspections
+            if str(getattr(i, "status", "") or "").lower()
+            in {"processing", "pending_analysis", "uploaded", "pending"}
+        ]
+    )
     return {
         "cards": {
             "total_inspections": len(inspections),
-            "inspections_last_30_days": len(inspections),
             "total_detections": len(detections),
+            "processing": processing,
             "avg_severity_score": round(sum(scores) / len(scores), 2) if scores else 0,
+            "inspections_last_30_days": len(inspections),
             "repairs_completed_this_month": stats.get("completed", 0),
-            "my_inspections": len(inspections),
-            "processing": len(
-                [i for i in inspections if (i.status or "") == "pending_analysis"]
-            ),
-            "completed": len(
-                [i for i in inspections if (i.status or "") in {"analyzed", "closed"}]
-            ),
         },
         "severity_bar": {
             "labels": list(severity_by_label.keys()),
@@ -98,7 +100,10 @@ def _offline_analytics(municipality_id: int | None = None) -> dict:
             "labels": list(damage_by_type.keys()),
             "values": list(damage_by_type.values()),
         },
-        "inspections_per_week": {"labels": [], "values": []},
+        "inspections_per_week": {
+            "labels": [f"W{i}" for i in range(1, 13)],
+            "values": [0] * 12,
+        },
         "ward_breakdown": [],
     }
 
@@ -242,8 +247,24 @@ def _db_analytics(municipality_id: int | None = None) -> dict:
             total_detections = 0
 
     if not any(severity_by_label.values()):
-        # Placeholder zeros keep Chart.js happy before Phase 6 detections.
         severity_by_label = {"SEVERE": 0, "MODERATE": 0, "MINOR": 0}
+
+    # Prefer live/memory detections when DB table is empty so dashboards stay current.
+    try:
+        from app.services.detection_service import list_detections_merged
+
+        merged = list_detections_merged()
+        if merged and int(total_detections or 0) < len(merged):
+            total_detections = len(merged)
+            for det in merged:
+                sev = (det.get("severity") or "").upper()
+                if sev in severity_by_label:
+                    severity_by_label[sev] += 1
+                label = (det.get("damage_type") or det.get("class_name") or "unknown")
+                label = str(label).replace("_", " ").title()
+                damage_by_type[label] = damage_by_type.get(label, 0) + 1
+    except Exception:
+        pass
 
     if not damage_by_type:
         damage_by_type = {

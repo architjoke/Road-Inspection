@@ -7,7 +7,7 @@
     <div>
         <p class="page-kicker">Work orders</p>
         <h1>{{ page_title }}</h1>
-        <p class="text-muted mb-0">Assign, track, and verify road repairs.</p>
+        <p class="text-muted mb-0">Assign contractors to AI-created jobs, track evidence, verify, and pay.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
         {% if not history %}
@@ -43,18 +43,26 @@
                         {{ job.location }}
                         <div class="small text-muted">{{ job.damage_type }} · inspection {{ job.inspection_id or "—" }}</div>
                     </td>
-                    <td><span class="badge text-bg-warning">{{ job.severity }}</span></td>
-                    <td>{{ job.status.replace('_', ' ') }}</td>
+                    <td>{% with severity=job.severity %}{% include "components/severity_badge.html" %}{% endwith %}</td>
+                    <td>{% with status=job.status %}{% include "components/status_badge.html" %}{% endwith %}</td>
                     <td>{{ job.assignee_name or job.assignee_id or "Unassigned" }}</td>
                     <td class="text-end">
+                        {% if not job.assignee_id and not job.assignee_name %}
+                        <a class="btn btn-sm btn-primary" href="{{ url_for('protected.repair_detail', repair_id=job.id) }}">Assign</a>
+                        {% elif job.status == 'evidence_uploaded' %}
+                        <a class="btn btn-sm btn-primary"
+                           href="{{ url_for('protected.repairs_verify', repair_id=job.id, inspection_id=job.inspection_id) }}">Verify</a>
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('protected.repair_detail', repair_id=job.id) }}">Open</a>
+                        {% else %}
                         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('protected.repair_detail', repair_id=job.id) }}">Open</a>
                         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('protected.repair_evidence', repair_id=job.id) }}">Evidence</a>
+                        {% endif %}
                     </td>
                 </tr>
                 {% else %}
                 <tr>
                     <td colspan="6" class="text-center text-muted py-5">
-                        No repair jobs yet. Create one from a detection review or the New job button.
+                        No repair jobs yet. Capture a road photo — YOLO detections auto-create unassigned jobs here.
                     </td>
                 </tr>
                 {% endfor %}

@@ -3,7 +3,7 @@
 {% block title %}Inspections{% endblock %}
 
 {% block content %}
-<div class="page-header" x-data="{ query: '', status: '' }">
+<div class="page-header">
     <div>
         <p class="page-kicker">Municipal inspection records</p>
         <h1>Inspections</h1>
@@ -60,9 +60,9 @@
                     <td>{{ inspection.location_name or "Not provided" }}</td>
                     <td>{{ inspection.inspection_date.strftime("%d %b %Y, %I:%M %p") }}</td>
                     <td>
-                        <span class="badge text-bg-warning">
-                            {{ inspection.status.replace("_", " ").title() }}
-                        </span>
+                        {% with status=inspection.status %}
+                        {% include "components/status_badge.html" %}
+                        {% endwith %}
                     </td>
                     <td class="text-end">
                         <a class="btn btn-sm btn-outline-primary"

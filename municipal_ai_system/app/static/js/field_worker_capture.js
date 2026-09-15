@@ -21,6 +21,9 @@
     const iosNote = document.getElementById("fw-ios-note");
     const httpsNote = document.getElementById("fw-https-note");
 
+    const idleHint = document.getElementById("fw-idle-hint");
+    const previewGpsEl = document.getElementById("fw-preview-gps");
+
     let stream = null;
     let watchId = null;
     let blob = null;
@@ -35,6 +38,12 @@
         document.querySelector('input[name="csrf_token"]')?.value ||
         "";
 
+    const setIdle = (idle) => {
+        if (idleHint) {
+            idleHint.classList.toggle("d-none", !idle);
+        }
+    };
+
     const setGpsStatus = (text, kind) => {
         if (!gpsEl) {
             return;
@@ -43,6 +52,13 @@
         gpsEl.classList.remove("is-ok", "is-warn", "is-err");
         if (kind) {
             gpsEl.classList.add(kind);
+        }
+        if (previewGpsEl) {
+            previewGpsEl.textContent = text;
+            previewGpsEl.classList.remove("is-ok", "is-warn", "is-err");
+            if (kind) {
+                previewGpsEl.classList.add(kind);
+            }
         }
     };
 
@@ -56,6 +72,7 @@
     };
 
     const showPreview = (url) => {
+        setIdle(false);
         livePanel.classList.add("d-none");
         previewPanel.classList.remove("d-none");
         preview.src = url;
@@ -65,13 +82,38 @@
     };
 
     const showLive = () => {
+        setIdle(false);
         previewPanel.classList.add("d-none");
         livePanel.classList.remove("d-none");
+        if (preview.src) {
+            URL.revokeObjectURL(preview.src);
+        }
         preview.removeAttribute("src");
         blob = null;
         shutterBtn.disabled = !stream;
         retakeBtn.disabled = true;
         uploadBtn.disabled = true;
+    };
+
+    const resetIdleUi = () => {
+        stopCamera();
+        previewPanel.classList.add("d-none");
+        livePanel.classList.add("d-none");
+        if (preview.src) {
+            URL.revokeObjectURL(preview.src);
+        }
+        preview.removeAttribute("src");
+        blob = null;
+        gps = { lat: null, lng: null, accuracy: null, status: "idle" };
+        setGpsStatus("GPS idle — start the camera to acquire location", null);
+        if (coordsEl) {
+            coordsEl.textContent = "Coordinates will appear here after GPS lock.";
+        }
+        shutterBtn.disabled = true;
+        retakeBtn.disabled = true;
+        uploadBtn.disabled = true;
+        setIdle(true);
+        setMessage("", "");
     };
 
     const stopCamera = () => {
@@ -97,14 +139,31 @@
         }
         setGpsStatus("Acquiring location…", "is-warn");
         const onOk = (pos) => {
+            const nextAcc = pos.coords.accuracy;
+            // Keep the most accurate sample (lower meters = better).
+            if (
+                gps.lat != null &&
+                gps.accuracy != null &&
+                nextAcc != null &&
+                nextAcc >= gps.accuracy
+            ) {
+                return;
+            }
             gps = {
                 lat: pos.coords.latitude,
                 lng: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
+                accuracy: nextAcc,
                 status: "ok",
             };
-            const acc = Math.round(pos.coords.accuracy || 0);
-            setGpsStatus(`Location acquired: ±${acc} meters`, "is-ok");
+            const acc = Math.round(nextAcc || 0);
+            const quality =
+                acc <= 25 ? "is-ok" : acc <= 80 ? "is-warn" : "is-warn";
+            setGpsStatus(
+                acc > 80
+                    ? `Weak GPS ±${acc} m — move outdoors / wait for better fix`
+                    : `Location acquired: ±${acc} meters`,
+                quality
+            );
             if (coordsEl) {
                 coordsEl.textContent =
                     `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)} (±${acc} m)`;
@@ -137,12 +196,12 @@
         };
         navigator.geolocation.getCurrentPosition(onOk, onErr, {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 20000,
             maximumAge: 0,
         });
         watchId = navigator.geolocation.watchPosition(onOk, () => {}, {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 20000,
             maximumAge: 0,
         });
     };
@@ -177,7 +236,9 @@
             await video.play();
             shutterBtn.disabled = false;
             startGps();
+            setIdle(false);
             livePanel.classList.remove("d-none");
+            previewPanel.classList.add("d-none");
         } catch (error) {
             console.error(error);
             setMessage(
@@ -215,14 +276,29 @@
             await new Promise((resolve) => {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
-                        gps = {
-                            lat: pos.coords.latitude,
-                            lng: pos.coords.longitude,
-                            accuracy: pos.coords.accuracy,
-                            status: "ok",
-                        };
-                        const acc = Math.round(pos.coords.accuracy || 0);
-                        setGpsStatus(`Location acquired: ±${acc} meters`, "is-ok");
+                        const nextAcc = pos.coords.accuracy;
+                        if (
+                            !(
+                                gps.lat != null &&
+                                gps.accuracy != null &&
+                                nextAcc != null &&
+                                nextAcc >= gps.accuracy
+                            )
+                        ) {
+                            gps = {
+                                lat: pos.coords.latitude,
+                                lng: pos.coords.longitude,
+                                accuracy: nextAcc,
+                                status: "ok",
+                            };
+                        }
+                        const acc = Math.round(gps.accuracy || 0);
+                        setGpsStatus(
+                            acc > 80
+                                ? `Weak GPS ±${acc} m — prefer outdoors before upload`
+                                : `Location acquired: ±${acc} meters`,
+                            acc > 80 ? "is-warn" : "is-ok"
+                        );
                         if (coordsEl) {
                             coordsEl.textContent =
                                 `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)} (±${acc} m)`;
@@ -230,7 +306,7 @@
                         resolve();
                     },
                     () => resolve(),
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
                 );
             });
         }
@@ -306,19 +382,13 @@
                 const result = await uploadOnce();
                 progressEl?.classList.add("d-none");
                 const detailHref = `/inspections/${result.inspection_id}`;
-                setMessage(
-                    `${result.message} Open details to review the capture.`,
-                    "alert-success"
-                );
-                if (messageEl) {
-                    const link = document.createElement("a");
-                    link.href = detailHref;
-                    link.className = "d-block mt-2 fw-semibold";
-                    link.textContent = "View inspection";
-                    messageEl.appendChild(link);
+                setMessage("Upload successful. Opening inspection…", "alert-success");
+                if (preview.src) {
+                    URL.revokeObjectURL(preview.src);
                 }
                 stopCamera();
                 uploading = false;
+                window.location.href = detailHref;
                 return;
             } catch (error) {
                 lastError = error;
@@ -340,13 +410,11 @@
     retakeBtn?.addEventListener("click", retake);
     uploadBtn?.addEventListener("click", upload);
     closeBtn?.addEventListener("click", () => {
-        stopCamera();
-        showLive();
-        livePanel.classList.add("d-none");
-        setMessage("", "");
+        resetIdleUi();
     });
     window.addEventListener("beforeunload", stopCamera);
 
+    setIdle(true);
     if (window.location.hash === "#live-capture") {
         root.scrollIntoView({ behavior: "smooth" });
     }

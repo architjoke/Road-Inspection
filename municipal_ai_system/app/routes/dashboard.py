@@ -126,11 +126,18 @@ def index():
     except Exception:
         current_app.logger.exception("Dashboard repair stats failed.")
 
+    attention_repairs = [
+        job
+        for job in assigned_repairs
+        if (job.get("status") or "") in {"open", "assigned", "in_progress", "rejected"}
+    ]
+
     try:
         return render_template(
             dashboard_template,
             analytics=analytics,
             repairs=assigned_repairs[:15],
+            attention_repairs=attention_repairs[:8],
             repair_stats=stats,
         )
     except Exception:
@@ -139,6 +146,7 @@ def index():
             "dashboard/viewer.html",
             analytics=_empty_analytics(),
             repairs=[],
+            attention_repairs=[],
             repair_stats=stats,
         )
 

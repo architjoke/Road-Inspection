@@ -23,39 +23,54 @@
             <dt class="col-sm-3">Inspection</dt>
             <dd class="col-sm-9">
                 {% if repair.inspection_id %}
-                <a href="{{ url_for('inspections.detail', inspection_id=repair.inspection_id) }}">{{ repair.inspection_id }}</a>
+                <a href="{{ url_for('inspections.detail', inspection_id=repair.inspection_id) }}">#{{ repair.inspection_id }}</a>
                 {% else %}—{% endif %}
             </dd>
             <dt class="col-sm-3">Detection</dt>
-            <dd class="col-sm-9">{{ repair.detection_id or "—" }}</dd>
+            <dd class="col-sm-9">
+                {% if repair.detection_id %}
+                <a href="{{ url_for('protected.detection_detail', detection_id=repair.detection_id) }}">#{{ repair.detection_id }}</a>
+                {% else %}—{% endif %}
+            </dd>
+            <dt class="col-sm-3">Assignee</dt>
+            <dd class="col-sm-9">{{ repair.assignee_name or repair.assignee_id or "Unassigned" }}</dd>
             <dt class="col-sm-3">Evidence</dt>
             <dd class="col-sm-9">{{ repair.evidence_filename or repair.evidence_note or "None yet" }}</dd>
+            <dt class="col-sm-3">Payment</dt>
+            <dd class="col-sm-9">{{ repair.payment_status or "pending" }}</dd>
         </dl>
     </div>
 </div>
 
 <div class="content-card">
-    <div class="content-card-header"><div><h2>Update job</h2></div></div>
+    <div class="content-card-header"><div><h2>Update job</h2><p>Assign contractor, verify status, and mark payment.</p></div></div>
     <form method="POST" class="p-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label" for="status">Status</label>
                 <select class="form-select" id="status" name="status">
-                    {% for value in ["open", "assigned", "in_progress", "evidence_uploaded", "verified", "closed", "rejected"] %}
+                    {% for value in ["open", "assigned", "in_progress", "evidence_uploaded", "verified", "paid", "closed", "rejected"] %}
                     <option value="{{ value }}" {% if repair.status == value %}selected{% endif %}>{{ value.replace('_', ' ') }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-md-4">
-                <label class="form-label" for="assignee_id">Assignee user ID</label>
-                <input class="form-control" id="assignee_id" name="assignee_id"
-                       value="{{ repair.assignee_id or '' }}">
+                <label class="form-label" for="assignee_id">Assign to contractor</label>
+                <select class="form-select" id="assignee_id" name="assignee_id">
+                    <option value="">Unassigned</option>
+                    {% for user in contractors or [] %}
+                    <option value="{{ user.id }}"
+                        {% if repair.assignee_id and repair.assignee_id|string == user.id|string %}selected{% endif %}>
+                        {{ user.full_name or user.username }} (ID {{ user.id }})
+                    </option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="col-md-4">
                 <label class="form-label" for="payment_status">Payment</label>
                 <select class="form-select" id="payment_status" name="payment_status">
-                    {% for value in ["pending", "verified", "paid"] %}
+                    {% for value in ["pending", "paid"] %}
                     <option value="{{ value }}" {% if (repair.payment_status or 'pending') == value %}selected{% endif %}>{{ value }}</option>
                     {% endfor %}
                 </select>
@@ -68,7 +83,10 @@
         <div class="d-flex flex-wrap gap-2 mt-4">
             <button class="btn btn-primary" type="submit">Save</button>
             <a class="btn btn-outline-secondary" href="{{ url_for('protected.repair_evidence', repair_id=repair.id) }}">Upload evidence</a>
-            <a class="btn btn-outline-primary" href="{{ url_for('protected.repairs_verify') }}">Run SSIM</a>
+            <a class="btn btn-outline-primary"
+               href="{{ url_for('protected.repairs_verify', repair_id=repair.id, inspection_id=repair.inspection_id) }}">
+                Verify with SSIM
+            </a>
         </div>
     </form>
 </div>

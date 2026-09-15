@@ -87,7 +87,7 @@ def test_contractor_cannot_open_repair_manager():
     assert response.status_code == 403
     jobs = client.get("/contractor/jobs")
     assert jobs.status_code == 200
-    assert b"Assigned repairs" in jobs.data
+    assert b"My Repair Tasks" in jobs.data
 
 
 def test_contractor_cannot_see_another_assignment():

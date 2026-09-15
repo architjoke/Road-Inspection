@@ -14,7 +14,7 @@
 
 <div class="row g-4">
     <div class="col-lg-6">
-        <div class="content-card">
+        <div class="content-card mb-4">
             <div class="content-card-header"><div><h2>Before image</h2><p>Original inspection capture (read-only).</p></div></div>
             <div class="p-4">
                 {% if before_url %}
@@ -24,13 +24,25 @@
                 {% endif %}
             </div>
         </div>
+        {% if after_url %}
+        <div class="content-card">
+            <div class="content-card-header"><div><h2>Your after image</h2><p>Uploaded evidence for municipal verification.</p></div></div>
+            <div class="p-4">
+                <img class="inspection-image-preview" src="{{ after_url }}" alt="After repair">
+            </div>
+        </div>
+        {% endif %}
     </div>
     <div class="col-lg-6">
         <div class="content-card mb-4">
             <div class="p-4">
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Inspection</dt>
-                    <dd class="col-sm-8">{{ repair.inspection_id or "—" }}</dd>
+                    <dd class="col-sm-8">
+                        {% if repair.inspection_id %}
+                        <a href="{{ url_for('inspections.detail', inspection_id=repair.inspection_id) }}">#{{ repair.inspection_id }}</a>
+                        {% else %}—{% endif %}
+                    </dd>
                     <dt class="col-sm-4">Location</dt>
                     <dd class="col-sm-8">{{ repair.location }}</dd>
                     <dt class="col-sm-4">GPS</dt>
@@ -43,11 +55,13 @@
                     <dd class="col-sm-8">{{ repair.severity }}</dd>
                     <dt class="col-sm-4">Damage</dt>
                     <dd class="col-sm-8">{{ repair.damage_type }}</dd>
+                    <dt class="col-sm-4">Payment</dt>
+                    <dd class="col-sm-8">{{ repair.payment_label }}</dd>
                 </dl>
             </div>
         </div>
         <div class="content-card">
-            <div class="content-card-header"><div><h2>Upload after image</h2><p>Drag a completed-work photo, then mark complete.</p></div></div>
+            <div class="content-card-header"><div><h2>Upload after image</h2><p>Submit completed-work photo for municipal verification.</p></div></div>
             <form method="POST" enctype="multipart/form-data" class="p-4">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">

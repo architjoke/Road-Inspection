@@ -12,7 +12,7 @@ _repairs: dict[int, dict[str, Any]] = {}
 _next_id = 1
 
 OPEN_STATUSES = {"open", "assigned", "in_progress", "evidence_uploaded"}
-DONE_STATUSES = {"verified", "closed", "rejected"}
+DONE_STATUSES = {"verified", "closed", "rejected", "paid"}
 
 
 def clear_repairs() -> None:
@@ -85,6 +85,7 @@ def create_repair(
             "notes": notes,
             "evidence_note": None,
             "evidence_filename": None,
+            "evidence_path": None,
             "comparison_id": None,
             "latitude": latitude,
             "longitude": longitude,
@@ -105,8 +106,12 @@ def update_repair(repair_id: int, **fields) -> dict[str, Any] | None:
         for key, value in fields.items():
             if value is not None or key in {"evidence_note", "comparison_id", "assignee_id"}:
                 row[key] = value
-        if fields.get("assignee_id") and row.get("status") == "open":
-            row["status"] = "assigned"
+        if "assignee_id" in fields:
+            aid = fields.get("assignee_id")
+            row["assignee_id"] = aid
+            row["contractor_user_id"] = aid
+            if aid and row.get("status") == "open":
+                row["status"] = "assigned"
         row["updated_at"] = datetime.utcnow().isoformat() + "Z"
         return deepcopy(row)
 

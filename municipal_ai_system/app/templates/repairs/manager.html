@@ -13,19 +13,84 @@
         <h1>Repair Manager</h1>
         <p class="text-muted mb-0">
             Before/after comparison with OpenCV alignment and SSIM scoring.
+            {% if repair_id %}Linked to repair #{{ repair_id }}{% if repair and repair.assignee_name %} · {{ repair.assignee_name }}{% endif %}.{% endif %}
         </p>
     </div>
+    {% if repair_id %}
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.repair_detail', repair_id=repair_id) }}">Back to repair</a>
+    {% else %}
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.repairs') }}">All repairs</a>
+    {% endif %}
 </div>
+
+{% if pending_verify is defined and pending_verify and not repair_id and not inspection_id %}
+<div class="content-card mb-4">
+    <div class="content-card-header">
+        <div>
+            <h2>Pending verification</h2>
+            <p>Jobs with after-evidence ready for SSIM comparison.</p>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>Location / damage</th>
+                    <th>Status</th>
+                    <th>Assignee</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in pending_verify %}
+                <tr>
+                    <td class="fw-semibold">#{{ job.id }}</td>
+                    <td>
+                        {{ job.location }}
+                        <div class="small text-muted">{{ job.damage_type }} · inspection {{ job.inspection_id or "—" }}</div>
+                    </td>
+                    <td>{% with status=job.status %}{% include "components/status_badge.html" %}{% endwith %}</td>
+                    <td>{{ job.assignee_name or job.assignee_id or "Unassigned" }}</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-primary"
+                           href="{{ url_for('protected.repairs_verify', repair_id=job.id, inspection_id=job.inspection_id) }}">
+                            Verify
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% elif not repair_id and not inspection_id %}
+<div class="alert alert-light border mb-4">
+    No jobs waiting for verification. When a contractor uploads after evidence, they appear here.
+    You can also open Verify from a repair detail page.
+</div>
+{% endif %}
 
 <div class="content-card" x-data="repairManager()" x-init="init()">
     <div class="content-card-header">
         <div>
             <h2>Before / After Comparison</h2>
-            <p>Upload before and after images to run automated repair verification.</p>
+            <p>
+                Before image loads from the inspection ID
+                {% if before_has_boxes %}(annotated with YOLO boxes){% endif %}.
+                Different road photos are rejected — they will not return a repair score.
+            </p>
         </div>
     </div>
 
     <div class="p-4">
+        {% if inspection_id %}
+        <div class="alert alert-info mb-3">
+            Using inspection <strong>#{{ inspection_id }}</strong>
+            {% if repair_id %} · repair <strong>#{{ repair_id }}</strong>{% endif %}
+            {% if before_has_boxes %} · before image includes detection boxes{% endif %}.
+        </div>
+        {% endif %}
         <div class="row g-4">
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Before repair</label>
@@ -58,12 +123,12 @@
 
         <div class="d-flex flex-wrap gap-2 mt-4">
             <button type="button" class="btn btn-primary" @click="runCompare()"
-                :disabled="!beforeFile || !afterFile || comparing">
+                :disabled="!(beforeFile || beforeUrl) || !(afterFile || afterUrl) || comparing">
                 <span x-text="comparing ? 'Comparing…' : 'Run SSIM Verification'"></span>
             </button>
-            <button type="button" class="btn btn-outline-secondary" @click="confirmReject()"
-                :disabled="!result">
-                Flag for Manual Review
+            <button type="button" class="btn btn-outline-secondary" @click="markVerifiedManual()"
+                :disabled="!repairId">
+                Mark repair verified
             </button>
         </div>
 
@@ -80,12 +145,15 @@
                 <dd class="col-sm-8" x-text="result?.manual_review_required ? 'Required' : 'Not required'"></dd>
                 <dt class="col-sm-4">Alignment</dt>
                 <dd class="col-sm-8" x-text="(result?.alignment_method || '—') + (result?.alignment_success ? ' (ok)' : ' (fallback)')"></dd>
+                <dt class="col-sm-4">Repair linked</dt>
+                <dd class="col-sm-8" x-text="result?.repair_status || (repairId ? ('#' + repairId) : '—')"></dd>
             </dl>
         </div>
 
         <p class="text-muted small mt-3 mb-0">
-            SSIM &lt; 0.60 → Repair Verified; 0.60–0.85 → Partial (review);
-            &gt; 0.85 → No Change (review). Alignment uses ORB + RANSAC with resize fallback.
+            Same-road gate runs first (ORB feature match). Unrelated roads return an error —
+            not “Repair Verified”. SSIM &lt; 0.60 → verified change; 0.60–0.85 → partial;
+            &gt; 0.85 → little change.
         </p>
     </div>
 </div>
@@ -96,7 +164,7 @@
     function repairManager() {
         return {
             beforeUrl: {{ (before_url or '')|tojson }},
-            afterUrl: '',
+            afterUrl: {{ (after_url or '')|tojson }},
             beforeFile: null,
             afterFile: null,
             comparing: false,
@@ -104,6 +172,7 @@
             loadingBefore: false,
             beforeError: {{ (before_error or '')|tojson }},
             inspectionId: {{ (inspection_id or none)|tojson }},
+            repairId: {{ (repair_id or none)|tojson }},
             init() {
                 const params = new URLSearchParams(window.location.search);
                 const id = params.get('inspection_id') || this.inspectionId;
@@ -133,26 +202,52 @@
             },
             setBefore(event) {
                 const file = event.target.files[0];
-                if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);
+                if (this.beforeUrl && this.beforeUrl.startsWith('blob:')) URL.revokeObjectURL(this.beforeUrl);
                 this.beforeFile = file || null;
-                this.beforeUrl = file ? URL.createObjectURL(file) : '';
+                this.beforeUrl = file ? URL.createObjectURL(file) : this.beforeUrl;
                 this.result = null;
             },
             setAfter(event) {
                 const file = event.target.files[0];
-                if (this.afterUrl) URL.revokeObjectURL(this.afterUrl);
+                if (this.afterUrl && this.afterUrl.startsWith('blob:')) URL.revokeObjectURL(this.afterUrl);
                 this.afterFile = file || null;
-                this.afterUrl = file ? URL.createObjectURL(file) : '';
+                this.afterUrl = file ? URL.createObjectURL(file) : this.afterUrl;
                 this.result = null;
             },
+            async urlToFile(url, name) {
+                const response = await fetch(url, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error('Could not load image');
+                const blob = await response.blob();
+                return new File([blob], name, { type: blob.type || 'image/jpeg' });
+            },
             async runCompare() {
-                if (!this.beforeFile || !this.afterFile) return;
                 this.comparing = true;
                 this.result = null;
                 try {
                     const form = new FormData();
-                    form.append('before', this.beforeFile);
-                    form.append('after', this.afterFile);
+                    if (this.inspectionId) form.append('inspection_id', String(this.inspectionId));
+                    if (this.repairId) form.append('repair_id', String(this.repairId));
+
+                    // When linked to a repair/inspection, prefer server-side originals
+                    // so the before image (and boxes) come from that inspection ID.
+                    const linked = Boolean(this.repairId || this.inspectionId);
+                    if (!linked || this.beforeFile || this.afterFile) {
+                        let before = this.beforeFile;
+                        let after = this.afterFile;
+                        if (!before && this.beforeUrl) {
+                            before = await this.urlToFile(this.beforeUrl, 'before.jpg');
+                        }
+                        if (!after && this.afterUrl) {
+                            after = await this.urlToFile(this.afterUrl, 'after.jpg');
+                        }
+                        if (!before || !after) {
+                            window.RoadInspectionUI?.toast('Before and after images are required.', 'danger');
+                            return;
+                        }
+                        form.append('before', before);
+                        form.append('after', after);
+                    }
+
                     const response = await fetch('/api/verification/compare', {
                         method: 'POST',
                         body: form,
@@ -160,21 +255,46 @@
                     });
                     const data = await response.json();
                     if (!response.ok) {
-                        window.RoadInspectionUI?.toast(data.error || 'Verification failed.', 'danger');
+                        this.result = null;
+                        window.RoadInspectionUI?.toast(
+                            data.error || 'Comparison rejected — images may be different roads.',
+                            'danger'
+                        );
                         return;
                     }
                     this.result = data;
                     const level = data.manual_review_required ? 'warning' : 'success';
-                    window.RoadInspectionUI?.toast(data.status || 'Verification complete.', level);
+                    const linkedMsg = data.repair_status ? ' Repair marked verified.' : '';
+                    window.RoadInspectionUI?.toast((data.status || 'Verification complete.') + linkedMsg, level);
                 } catch (err) {
                     window.RoadInspectionUI?.toast('Verification request failed.', 'danger');
                 } finally {
                     this.comparing = false;
                 }
             },
-            confirmReject() {
-                if (!window.confirm('Flag this repair for supervisor review?')) return;
-                window.RoadInspectionUI?.toast('Flagged for manual review.', 'warning');
+            async markVerifiedManual() {
+                if (!this.repairId) return;
+                if (!window.confirm('Mark repair #' + this.repairId + ' as verified without re-running SSIM?')) return;
+                try {
+                    const response = await fetch('/api/repairs/' + this.repairId + '/mark-verified', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        },
+                        body: JSON.stringify({}),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        window.RoadInspectionUI?.toast(data.error || 'Could not mark verified.', 'danger');
+                        return;
+                    }
+                    window.RoadInspectionUI?.toast('Repair marked verified. Payment can be set next.', 'success');
+                    window.location.href = '/repairs/' + this.repairId;
+                } catch (err) {
+                    window.RoadInspectionUI?.toast('Could not mark verified.', 'danger');
+                }
             }
         };
     }

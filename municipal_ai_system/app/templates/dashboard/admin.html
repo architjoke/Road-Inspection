@@ -31,7 +31,7 @@
         <div class="stat-card stat-info">
             <span>Total Detections</span>
             <strong>{{ cards.total_detections if cards.total_detections is defined else '—' }}</strong>
-            <small>AI detections (Phase 6+)</small>
+            <small>AI detections from YOLO</small>
         </div>
     </div>
     <div class="col-sm-6 col-xl-3">
@@ -144,9 +144,13 @@
             <i class="fa-solid fa-clipboard-list"></i>
             View Inspections
         </a>
+        <a class="quick-action" href="{{ url_for('protected.detections') }}">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            AI Detections
+        </a>
         <a class="quick-action" href="{{ url_for('protected.repairs') }}">
             <i class="fa-solid fa-screwdriver-wrench"></i>
-            Manage Repairs
+            Assign Repairs
         </a>
         <a class="quick-action" href="{{ url_for('protected.map_view') }}">
             <i class="fa-solid fa-map"></i>

@@ -102,6 +102,10 @@ class TaskStore:
                     setattr(task, key, value)
             return deepcopy(task)
 
+    def list_all(self) -> list[AnalysisTask]:
+        with self._lock:
+            return [deepcopy(task) for task in self._tasks.values()]
+
     def list_for_inspection(self, inspection_id: int) -> list[AnalysisTask]:
         with self._lock:
             return [

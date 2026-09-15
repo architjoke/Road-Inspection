@@ -21,7 +21,12 @@ from app.services.offline_store import offline_mode_enabled, offline_store
 from app.services.inspection_service import create_inspection_with_media
 from app.services.validation_service import validate_upload
 from app.services.ward_service import list_wards_for_municipality
-from app.utils.media_urls import get_before_media, media_public_url
+from app.utils.media_urls import (
+    annotated_media_url,
+    get_before_media,
+    media_public_url,
+    resolve_annotated_path,
+)
 
 
 inspections_bp = Blueprint(
@@ -46,12 +51,19 @@ def get_inspection_or_404(inspection_id: int):
     return inspection
 
 
-def get_media_or_404(media_id: int) -> InspectionMedia:
-    media = db.session.get(InspectionMedia, media_id)
-
+def get_media_or_404(media_id: int):
+    """Resolve media from DB or offline store (duck-typed attributes)."""
+    media = None
+    if not offline_mode_enabled():
+        try:
+            media = db.session.get(InspectionMedia, media_id)
+        except Exception:
+            db.session.rollback()
+            media = None
+    if media is None:
+        media = offline_store.get_media(media_id)
     if media is None:
         abort(404)
-
     return media
 
 
@@ -84,13 +96,34 @@ def can_view_inspection(inspection: Inspection) -> bool:
 @login_required
 @roles_required("field_worker", "municipal_admin", "super_admin")
 def new():
+    # Field workers: live camera is primary; ?mode=gallery keeps file upload reachable.
+    gallery_mode = (request.args.get("mode") or "").lower() in {"gallery", "file", "upload"}
+    if request.method == "POST" and request.form.get("gallery_mode") == "1":
+        gallery_mode = True
+
+    if (
+        request.method == "GET"
+        and current_user.is_field_worker()
+        and not current_user.is_municipal_admin()
+        and not current_user.is_super_admin()
+        and not gallery_mode
+    ):
+        return redirect(url_for("dashboard.index") + "#live-capture")
+
+    def _render_new(**extra):
+        return render_template(
+            "inspections/new.html",
+            gallery_mode=gallery_mode,
+            **extra,
+        )
+
     if request.method == "POST":
         uploaded_file = request.files.get("media_file")
 
         validation = validate_upload(uploaded_file)
         if not validation.get("valid"):
             flash(validation.get("error", "Invalid upload."), "danger")
-            return render_template("inspections/new.html")
+            return _render_new()
 
         for warning in validation.get("warnings") or []:
             flash(warning, "warning")
@@ -126,7 +159,7 @@ def new():
         except ValueError as error:
             db.session.rollback()
             flash(str(error), "danger")
-            return render_template("inspections/new.html")
+            return _render_new()
 
         except Exception:
             db.session.rollback()
@@ -141,9 +174,9 @@ def new():
                 "danger"
             )
 
-            return render_template("inspections/new.html")
+            return _render_new()
 
-    return render_template("inspections/new.html")
+    return _render_new()
 
 
 @inspections_bp.route("/my")
@@ -226,11 +259,48 @@ def detail(inspection_id: int):
 
     media = get_before_media(inspection)
     before_url = media_public_url(media)
+    annotated_url = annotated_media_url(media)
+
+    detections = []
+    try:
+        from app.services.detection_review_service import list_detections_for_review
+
+        payload = list_detections_for_review(inspection_id)
+        detections = payload.get("detections") or []
+    except Exception:
+        current_app.logger.exception(
+            "Could not load detections for inspection %s", inspection_id
+        )
+
+    linked_repairs = []
+    try:
+        from app.services.repair_service import list_repairs
+
+        linked_repairs = [
+            r for r in list_repairs() if r.get("inspection_id") == inspection_id
+        ]
+    except Exception:
+        current_app.logger.exception(
+            "Could not load repairs for inspection %s", inspection_id
+        )
+
+    analysis_done = bool(
+        annotated_url
+        or detections
+        or (getattr(inspection, "total_detections", None) or 0) > 0
+        or str(getattr(media, "processing_status", "") or "").lower()
+        in {"processed", "completed", "done"}
+    )
+
     return render_template(
         "inspections/detail.html",
         inspection=inspection,
         before_url=before_url,
         before_missing=not before_url,
+        annotated_url=annotated_url,
+        detections=detections,
+        linked_repairs=linked_repairs,
+        analysis_done=analysis_done,
     )
 
 
@@ -257,7 +327,28 @@ def view_media(media_id: int):
 
     return send_file(
         file_path,
-        mimetype=media.mime_type,
+        mimetype=media.mime_type or "image/jpeg",
         as_attachment=False,
-        download_name=media.file_name
+        download_name=media.file_name or file_path.name,
+    )
+
+
+@inspections_bp.route("/media/<int:media_id>/annotated")
+@login_required
+def view_annotated_media(media_id: int):
+    media = get_media_or_404(media_id)
+    inspection = get_inspection_or_404(media.inspection_id)
+
+    if not can_view_inspection(inspection):
+        abort(403)
+
+    annotated = resolve_annotated_path(media)
+    if annotated is None:
+        abort(404)
+
+    return send_file(
+        annotated,
+        mimetype="image/jpeg",
+        as_attachment=False,
+        download_name=annotated.name,
     )

@@ -574,6 +574,19 @@ def detections_review(detection_id: int):
     return jsonify(updated)
 
 
+@api_bp.route("/repairs/<int:repair_id>/mark-verified", methods=["POST"])
+@login_required
+@roles_required("super_admin", "municipal_admin", "field_officer")
+def repairs_mark_verified(repair_id: int):
+    from app.services.repair_service import get_repair
+    from app.services.workflow_service import mark_repair_verified
+
+    if get_repair(repair_id) is None:
+        return jsonify({"error": "Repair not found."}), 404
+    updated = mark_repair_verified(repair_id)
+    return jsonify({"ok": True, "repair": updated})
+
+
 @api_bp.route("/verification/compare", methods=["POST"])
 @csrf.exempt
 @limiter.limit("20 per minute")
@@ -615,26 +628,72 @@ def verification_compare():
         except (TypeError, ValueError):
             return jsonify({"error": "inspection_id must be an integer."}), 400
 
+    repair_id = request.form.get("repair_id", type=int)
+    if repair_id is None and request.is_json:
+        try:
+            repair_id = int(request.json.get("repair_id")) if request.json.get("repair_id") is not None else None
+        except (TypeError, ValueError):
+            return jsonify({"error": "repair_id must be an integer."}), 400
+
     before_media_id = request.form.get("before_media_id", type=int)
     after_media_id = request.form.get("after_media_id", type=int)
 
     tmp_paths: list[Path] = []
     try:
-        if before_file and after_file:
+        # Prefer linked inspection/repair files when IDs are provided (correct road).
+        if repair_id or inspection_id:
+            from app.services.repair_service import get_repair
+            from app.services.workflow_service import get_inspection_by_id
+            from app.utils.media_urls import get_before_media, resolve_original_path
+
+            repair = get_repair(repair_id) if repair_id else None
+            if repair and not inspection_id:
+                inspection_id = repair.get("inspection_id")
+            if repair and repair.get("evidence_path") and Path(repair["evidence_path"]).is_file():
+                after_path = Path(repair["evidence_path"])
+            if inspection_id:
+                inspection = get_inspection_by_id(inspection_id)
+                media = get_before_media(inspection) if inspection else None
+                local_before = resolve_original_path(media)
+                if local_before is not None:
+                    before_path = local_before
+                    before_media_id = before_media_id or getattr(media, "id", None)
+
+        if before_file and after_file and not (before_path and after_path):
             tmp = Path(tempfile.mkdtemp(prefix="verify_"))
             before_path = tmp / "before.jpg"
             after_path = tmp / "after.jpg"
             before_file.save(before_path)
             after_file.save(after_path)
             tmp_paths.extend([before_path, after_path])
+        elif before_file and after_path and not before_path:
+            tmp = Path(tempfile.mkdtemp(prefix="verify_"))
+            before_path = tmp / "before.jpg"
+            before_file.save(before_path)
+            tmp_paths.append(before_path)
+            after_path = Path(after_path)
+        elif after_file and before_path and not after_path:
+            tmp = Path(tempfile.mkdtemp(prefix="verify_"))
+            after_path = tmp / "after.jpg"
+            after_file.save(after_path)
+            tmp_paths.append(after_path)
+            before_path = Path(before_path)
         elif before_path and after_path:
             before_path = Path(before_path)
             after_path = Path(after_path)
+        elif before_file and after_file:
+            tmp = Path(tempfile.mkdtemp(prefix="verify_"))
+            before_path = tmp / "before.jpg"
+            after_path = tmp / "after.jpg"
+            before_file.save(before_path)
+            after_file.save(after_path)
+            tmp_paths.extend([before_path, after_path])
         else:
             return jsonify(
                 {
                     "error": (
-                        "Provide before/after image files or before_path and after_path."
+                        "Provide before/after images, or open Verify with an "
+                        "inspection_id / repair_id so the before image loads automatically."
                     )
                 }
             ), 400
@@ -658,10 +717,29 @@ def verification_compare():
             resource_id=record.get("comparison_id"),
             details={
                 "inspection_id": inspection_id,
+                "repair_id": repair_id,
                 "ssim": record.get("ssim"),
                 "status": record.get("status"),
             },
         )
+
+        # Link SSIM result back to the repair job when verified (or partial with repair_id).
+        status_text = str(record.get("status") or "")
+        if repair_id and (
+            status_text == "Repair Verified"
+            or "Partial" in status_text
+        ):
+            from app.services.workflow_service import mark_repair_verified
+
+            # Auto-verify only on clear "Repair Verified"; partial needs manual confirm.
+            if status_text == "Repair Verified":
+                mark_repair_verified(
+                    repair_id,
+                    comparison_id=record.get("comparison_id"),
+                )
+                record["repair_status"] = "verified"
+            record["repair_id"] = repair_id
+
         return jsonify(record), 201
     except VerificationError as exc:
         return jsonify({"error": str(exc)}), 400

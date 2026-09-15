@@ -58,8 +58,11 @@
         </div>
         <p class="text-muted small mt-3 mb-0" x-show="jobMessage" x-text="jobMessage"></p>
         <p class="text-muted small mt-3 mb-0">
-            Reports use in-memory detections and verification records when
-            <code>OFFLINE_MODE</code> is enabled. RDS is not required.
+            {% if offline_mode %}
+            Offline mode is on — reports use local detections and verification records (RDS not required).
+            {% else %}
+            Export PDF, CSV, Excel, or JSON for any inspection ID you can access.
+            {% endif %}
         </p>
     </div>
 </div>

@@ -1,10 +1,10 @@
-"""Detection review helpers for Phase 10 severity display (offline-safe)."""
+"""Detection review helpers for severity display (offline-safe)."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from app.services.detection_service import list_memory_detections, persistence_mode
+from app.services.detection_service import list_detections_merged, persistence_mode
 
 
 def serialize_detection_for_review(row: dict[str, Any]) -> dict[str, Any]:
@@ -49,6 +49,7 @@ def serialize_detection_for_review(row: dict[str, Any]) -> dict[str, Any]:
         "frame_number": row.get("frame_number"),
         "created_at": row.get("created_at"),
         "explanation": assessment.get("explanation") or evidence.get("explanation"),
+        "repair_id": row.get("repair_id"),
     }
 
 
@@ -57,7 +58,24 @@ def list_detections_for_review(
     *,
     manual_review_only: bool = False,
 ) -> dict[str, Any]:
-    rows = list_memory_detections(inspection_id=inspection_id)
+    rows = list_detections_merged(inspection_id=inspection_id)
+    # Attach linked open repair ids when present
+    try:
+        from app.services.repair_service import list_repairs
+
+        repairs = list_repairs()
+        by_detection = {
+            r.get("detection_id"): r.get("id")
+            for r in repairs
+            if r.get("detection_id") is not None
+        }
+        for row in rows:
+            rid = by_detection.get(row.get("detection_id"))
+            if rid:
+                row["repair_id"] = rid
+    except Exception:
+        pass
+
     items = [serialize_detection_for_review(r) for r in rows]
     if manual_review_only:
         items = [i for i in items if i.get("manual_review_required")]
@@ -66,14 +84,26 @@ def list_detections_for_review(
         "count": len(items),
         "detections": items,
         "note": (
-            "Relative depth is not metric. Physical mm/cm/m and volume require "
-            "calibration (unavailable)."
+            "Detections come from live YOLO analysis. "
+            "Unassigned repair jobs are auto-created for staff to assign to contractors."
         ),
     }
 
 
 def get_detection_for_review(detection_id: int) -> dict[str, Any] | None:
-    for row in list_memory_detections():
-        if int(row.get("detection_id") or -1) == int(detection_id):
-            return serialize_detection_for_review(row)
+    for row in list_detections_merged():
+        if int(row.get("detection_id") or -1) != int(detection_id):
+            continue
+        # Attach linked repair id (same as list view) so assign updates, not duplicates.
+        if not row.get("repair_id"):
+            try:
+                from app.services.repair_service import list_repairs
+
+                for repair in list_repairs():
+                    if repair.get("detection_id") == int(detection_id):
+                        row["repair_id"] = repair.get("id")
+                        break
+            except Exception:
+                pass
+        return serialize_detection_for_review(row)
     return None

@@ -10,22 +10,34 @@
 <div class="page-header">
     <div>
         <p class="page-kicker">Field data collection</p>
-        <h1>New Road Inspection</h1>
+        <h1>{% if gallery_mode %}Upload Road Photo{% else %}New Road Inspection{% endif %}</h1>
         <p class="text-muted mb-0">
+            {% if gallery_mode %}
+            Choose a photo from your gallery. GPS can come from the browser, EXIF, or manual entry.
+            {% else %}
             Capture with the live camera or upload a file. GPS can come from the browser, EXIF, or manual entry.
+            {% endif %}
         </p>
     </div>
 
+    {% if current_user.is_field_worker() and not current_user.is_municipal_admin() and not current_user.is_super_admin() %}
     <a class="btn btn-outline-primary" href="{{ url_for('inspections.my_inspections') }}">
         <i class="fa-solid fa-list me-2"></i>
         My Inspections
     </a>
+    {% else %}
+    <a class="btn btn-outline-primary" href="{{ url_for('inspections.list_all') }}">
+        <i class="fa-solid fa-list me-2"></i>
+        Inspections
+    </a>
+    {% endif %}
 </div>
 
-<form id="inspection-form" method="POST" action="{{ url_for('inspections.new') }}" enctype="multipart/form-data"
+<form id="inspection-form" method="POST" action="{{ url_for('inspections.new') }}{% if gallery_mode %}?mode=gallery{% endif %}" enctype="multipart/form-data"
     novalidate x-data="inspectionUploadForm()" @submit="onSubmit($event)">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="gps_manual_override" :value="manualOverride ? '1' : ''">
+    {% if gallery_mode %}<input type="hidden" name="gallery_mode" value="1">{% endif %}
 
     <div class="row g-4">
         <div class="col-lg-7">
@@ -88,6 +100,7 @@
                 </div>
 
                 <div class="p-4">
+                    {% if not gallery_mode %}
                     <div class="camera-capture-panel mb-4" id="camera-capture-panel">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <strong>Live camera capture</strong>
@@ -113,6 +126,7 @@
                             Capture grabs a still frame, reads GPS, uploads for analysis, then plots on the map.
                         </p>
                     </div>
+                    {% endif %}
 
                     <label for="media_file" class="upload-drop-zone" id="upload-drop-zone"
                         :class="{ 'drag-over': dragging }"
@@ -239,5 +253,7 @@
 {% block page_js %}
 <script src="{{ url_for('static', filename='js/geolocation.js') }}"></script>
 <script src="{{ url_for('static', filename='js/inspection_upload.js') }}"></script>
+{% if not gallery_mode %}
 <script src="{{ url_for('static', filename='js/camera_capture.js') }}"></script>
+{% endif %}
 {% endblock %}

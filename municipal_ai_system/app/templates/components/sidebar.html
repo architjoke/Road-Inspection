@@ -85,27 +85,27 @@
         </a>
 
         {% elif role == "field_officer" %}
-        <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
+        <a class="nav-link {% if request.endpoint and request.endpoint.startswith('inspections.') %}active{% endif %}" href="{{ url_for('inspections.list_all') }}">
             <i class="fa-solid fa-clipboard-check"></i>
             Inspections
         </a>
-        <a class="nav-link" href="{{ url_for('protected.detections') }}">
+        <a class="nav-link {% if request.endpoint and 'detection' in request.endpoint %}active{% endif %}" href="{{ url_for('protected.detections') }}">
             <i class="fa-solid fa-magnifying-glass"></i>
             AI Detections
         </a>
-        <a class="nav-link" href="{{ url_for('protected.repairs_verify') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.repairs_verify' %}active{% endif %}" href="{{ url_for('protected.repairs_verify') }}">
             <i class="fa-solid fa-circle-check"></i>
             Verification
         </a>
-        <a class="nav-link" href="{{ url_for('protected.repairs') }}">
+        <a class="nav-link {% if request.endpoint and 'repair' in request.endpoint and request.endpoint != 'protected.repairs_verify' %}active{% endif %}" href="{{ url_for('protected.repairs') }}">
             <i class="fa-solid fa-screwdriver-wrench"></i>
             Repairs
         </a>
-        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.map_view' %}active{% endif %}" href="{{ url_for('protected.map_view') }}">
             <i class="fa-solid fa-map"></i>
             GIS Map
         </a>
-        <a class="nav-link" href="{{ url_for('protected.reports') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.reports' %}active{% endif %}" href="{{ url_for('protected.reports') }}">
             <i class="fa-solid fa-file-lines"></i>
             Reports
         </a>
@@ -113,49 +113,49 @@
         {% elif role == "field_worker" %}
         <a class="nav-link" href="{{ url_for('dashboard.index') }}#live-capture">
             <i class="fa-solid fa-camera"></i>
-            Capture New Inspection
+            Capture Inspection
         </a>
-        <a class="nav-link" href="{{ url_for('inspections.new') }}">
-            <i class="fa-solid fa-circle-plus"></i>
-            New Inspection
-        </a>
-        <a class="nav-link" href="{{ url_for('inspections.my_inspections') }}">
+        <a class="nav-link {% if request.endpoint == 'inspections.my_inspections' %}active{% endif %}" href="{{ url_for('inspections.my_inspections') }}">
             <i class="fa-solid fa-clipboard-list"></i>
             My Inspections
         </a>
-        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.map_view' %}active{% endif %}" href="{{ url_for('protected.map_view') }}">
             <i class="fa-solid fa-map"></i>
             GIS Map
         </a>
 
         {% elif role == "contractor" %}
-        <a class="nav-link" href="{{ url_for('contractor.jobs') }}">
+        <a class="nav-link {% if request.endpoint in ['contractor.jobs', 'contractor.job_detail'] and request.args.get('status') not in ['pending_upload', 'payments'] %}active{% endif %}"
+            href="{{ url_for('contractor.jobs') }}">
             <i class="fa-solid fa-list-check"></i>
             My Repair Tasks
         </a>
-        <a class="nav-link" href="{{ url_for('contractor.jobs') }}">
+        <a class="nav-link {% if request.endpoint == 'contractor.jobs' and request.args.get('status') == 'pending_upload' %}active{% endif %}"
+            href="{{ url_for('contractor.jobs', status='pending_upload') }}">
             <i class="fa-solid fa-cloud-arrow-up"></i>
             Upload After Image
         </a>
-        <a class="nav-link" href="{{ url_for('contractor.jobs', status='verified') }}">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            Payment status
+        <a class="nav-link {% if request.endpoint == 'contractor.jobs' and request.args.get('status') == 'payments' %}active{% endif %}"
+            href="{{ url_for('contractor.jobs', status='payments') }}">
+            <i class="fa-solid fa-indian-rupee-sign"></i>
+            Payment Status
         </a>
-        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.map_view' %}active{% endif %}"
+            href="{{ url_for('protected.map_view') }}">
             <i class="fa-solid fa-map"></i>
-            Assigned map
+            Assigned Map
         </a>
 
         {% elif role == "viewer" %}
-        <a class="nav-link" href="{{ url_for('inspections.list_all') }}">
+        <a class="nav-link {% if request.endpoint and request.endpoint.startswith('inspections.') %}active{% endif %}" href="{{ url_for('inspections.list_all') }}">
             <i class="fa-solid fa-clipboard-check"></i>
             Inspections
         </a>
-        <a class="nav-link" href="{{ url_for('protected.map_view') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.map_view' %}active{% endif %}" href="{{ url_for('protected.map_view') }}">
             <i class="fa-solid fa-map"></i>
             GIS Map
         </a>
-        <a class="nav-link" href="{{ url_for('protected.reports') }}">
+        <a class="nav-link {% if request.endpoint == 'protected.reports' %}active{% endif %}" href="{{ url_for('protected.reports') }}">
             <i class="fa-solid fa-file-lines"></i>
             Reports
         </a>

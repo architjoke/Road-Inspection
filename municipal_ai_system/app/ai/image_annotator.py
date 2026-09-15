@@ -19,14 +19,18 @@ SEVERITY_COLORS = {
 
 
 def _color_for(det: dict[str, Any]) -> tuple[int, int, int]:
+    damage = (det.get("damage_type") or det.get("class_name") or "").lower()
+    if "pothole" in damage or "d40" in damage:
+        return (22, 163, 74)  # green
+    if "alligator" in damage or "d20" in damage:
+        return (220, 38, 38)  # red
+    if "longitudinal" in damage or "d00" in damage:
+        return (234, 179, 8)  # yellow
+    if "transverse" in damage or "lateral" in damage or "d10" in damage:
+        return (249, 115, 22)  # orange
     severity = (det.get("severity") or "").upper()
     if severity in SEVERITY_COLORS:
         return SEVERITY_COLORS[severity]
-    damage = (det.get("damage_type") or "").lower()
-    if "pothole" in damage or "alligator" in damage:
-        return SEVERITY_COLORS["SEVERE"]
-    if "crack" in damage:
-        return SEVERITY_COLORS["MODERATE"]
     return (37, 99, 235)
 
 

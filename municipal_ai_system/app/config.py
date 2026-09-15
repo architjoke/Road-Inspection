@@ -10,6 +10,12 @@ APP_DIR = Path(__file__).resolve().parent
 SYSTEM_DIR = APP_DIR.parent
 PROJECT_ROOT = SYSTEM_DIR.parent
 
+DB_URL_PLACEHOLDERS = (
+    "USERNAME:PASSWORD",
+    "YOUR-RDS-HOST",
+    "YOUR_HOST",
+)
+
 
 def _ensure_local_env_file() -> None:
     """Create municipal_ai_system/.env from .env.example if missing.
@@ -23,11 +29,64 @@ def _ensure_local_env_file() -> None:
     shutil.copyfile(example_path, env_path)
 
 
-_ensure_local_env_file()
+def load_project_env() -> None:
+    """Load repo-root then municipal_ai_system/.env (local wins). UTF-8 BOM safe."""
+    _ensure_local_env_file()
+    for path in (PROJECT_ROOT / ".env", SYSTEM_DIR / ".env"):
+        if not path.exists():
+            continue
+        load_dotenv(path, override=True, encoding="utf-8-sig")
 
-# Repo-root .env first, then municipal_ai_system/.env (local wins on conflicts).
-load_dotenv(PROJECT_ROOT / ".env")
-load_dotenv(SYSTEM_DIR / ".env", override=True)
+
+def is_usable_database_url(uri: str | None) -> bool:
+    uri = (uri or "").strip()
+    if not uri:
+        return False
+    if any(token in uri for token in DB_URL_PLACEHOLDERS):
+        return False
+    return True
+
+
+def _offline_flag_from_env_file() -> str | None:
+    """Read OFFLINE_MODE from municipal_ai_system/.env only (not start.bat)."""
+    env_path = SYSTEM_DIR / ".env"
+    if not env_path.exists():
+        return None
+    try:
+        text = env_path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() != "OFFLINE_MODE":
+            continue
+        return value.strip().strip('"').strip("'").lower()
+    return None
+
+
+def resolve_offline_mode() -> bool:
+    """Offline when .env asks for it, or when DATABASE_URL is missing/placeholder.
+
+    start.bat must not force offline when .env already has a real RDS URL.
+    Set OFFLINE_MODE=true inside municipal_ai_system/.env for campus Wi-Fi demos.
+    """
+    load_project_env()
+    usable = is_usable_database_url(os.getenv("DATABASE_URL"))
+    file_flag = _offline_flag_from_env_file()
+    if file_flag in {"true", "1", "yes"}:
+        return True
+    if file_flag in {"false", "0", "no"}:
+        return False
+    if usable:
+        return False
+    explicit = (os.getenv("OFFLINE_MODE") or "").strip().lower()
+    return explicit in {"true", "1", "yes"} or not usable
+
+
+load_project_env()
 
 
 class Config:

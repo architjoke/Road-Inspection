@@ -36,7 +36,9 @@ def _reset_stores():
     from app.services.comparison_service import clear_comparisons
     from app.services.report_service import clear_report_jobs
     from app.services.audit_trail import clear_audit_events
+    from app.services.directory_service import clear_directory
     from app.services.offline_store import offline_store
+    from app.services.repair_service import clear_repairs
     from app.workers.executor import reset_executor_for_tests
     from app.workers.task_store import task_store
 
@@ -49,6 +51,8 @@ def _reset_stores():
     clear_audit_events()
     task_store.clear()
     offline_store.clear()
+    clear_directory()
+    clear_repairs()
     yield
     reset_model_cache()
     reset_segmentation_cache()
@@ -59,4 +63,6 @@ def _reset_stores():
     clear_audit_events()
     task_store.clear()
     offline_store.clear()
+    clear_directory()
+    clear_repairs()
     reset_executor_for_tests()

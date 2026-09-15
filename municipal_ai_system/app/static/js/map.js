@@ -67,7 +67,8 @@
             ? `<div class="map-popup-thumb"><img src="${escapeHtml(props.thumbnail_url)}" alt="capture"></div>`
             : "";
         const reviewLink = props.inspection_id
-            ? `<a href="/detections">Open detection review</a>`
+            ? `<a href="/inspections/${escapeHtml(props.inspection_id)}">Open inspection</a>
+               · <a href="/repairs/verify?inspection_id=${escapeHtml(props.inspection_id)}">Before image</a>`
             : "";
         const rows = [
             ["Inspection", props.inspection_code || props.inspection_id || "—"],
@@ -113,6 +114,9 @@
 
         marker.bindPopup(popupHtml(props));
         marker._roadProps = props;
+        marker.on("click", () => {
+            window.RoadInspectionMap && window.RoadInspectionMap.showBeforeImage(props);
+        });
         return marker;
     };
 
@@ -324,11 +328,61 @@
         );
     });
 
+    const showBeforeImage = async (props) => {
+        const img = document.getElementById("map-before-img");
+        const placeholder = document.getElementById("map-before-placeholder");
+        const caption = document.getElementById("map-before-caption");
+        const inspectionId = props && props.inspection_id;
+        if (caption) {
+            caption.textContent = props.location_name || props.address || "Selected location";
+        }
+        if (!inspectionId) {
+            if (placeholder) {
+                placeholder.classList.remove("d-none");
+                placeholder.textContent = "No before image available for this location";
+            }
+            if (img) {
+                img.classList.add("d-none");
+            }
+            return;
+        }
+        if (placeholder) {
+            placeholder.classList.remove("d-none");
+            placeholder.textContent = "Loading before image…";
+        }
+        try {
+            const response = await fetch(`/api/inspections/${inspectionId}/before-image`, {
+                credentials: "same-origin",
+                headers: { Accept: "application/json" },
+            });
+            const data = await response.json();
+            if (!response.ok || !data.url) {
+                throw new Error(data.error || "missing");
+            }
+            if (img) {
+                img.src = data.url;
+                img.classList.remove("d-none");
+            }
+            if (placeholder) {
+                placeholder.classList.add("d-none");
+            }
+        } catch (error) {
+            if (img) {
+                img.classList.add("d-none");
+            }
+            if (placeholder) {
+                placeholder.classList.remove("d-none");
+                placeholder.textContent = "No before image available for this location";
+            }
+        }
+    };
+
     window.RoadInspectionMap = {
         loadFeatures,
         radiusSearch,
         toggleWardBoundaries,
         plotFeature,
+        showBeforeImage,
         map,
     };
 

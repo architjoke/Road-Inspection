@@ -2,19 +2,24 @@
 
 {% block title %}Field Worker Dashboard{% endblock %}
 
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/field_worker_capture.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inspection.css') }}">
+{% endblock %}
+
 {% block content %}
+{% set cards = analytics.cards if analytics else {} %}
 <div class="page-header">
     <div>
         <p class="page-kicker">Field data collection</p>
         <h1>Field Worker Dashboard</h1>
         <p class="text-muted mb-0">
-            Capture road photos/videos, attach GPS data, and submit road inspections.
+            Capture a road photo with live GPS, then upload it for AI analysis.
         </p>
     </div>
-
-    <a class="btn btn-primary" href="{{ url_for('inspections.new') }}">
-        <i class="fa-solid fa-circle-plus me-2"></i>
-        New Inspection
+    <a class="btn btn-primary" href="#live-capture">
+        <i class="fa-solid fa-camera me-2"></i>
+        Capture New Inspection
     </a>
 </div>
 
@@ -22,49 +27,98 @@
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-primary">
             <span>My Inspections</span>
-            <strong>View</strong>
-            <small>Open your submitted inspections</small>
+            <strong>{{ cards.total_inspections if cards.total_inspections is defined else 0 }}</strong>
+            <small>Submitted in this session / municipality</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-warning">
             <span>Processing</span>
-            <strong>—</strong>
-            <small>AI processing begins in a later phase</small>
+            <strong>{{ cards.processing if cards.processing is defined else 0 }}</strong>
+            <small>Waiting on AI analysis</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-success">
-            <span>Completed</span>
-            <strong>—</strong>
-            <small>Finished inspections appear here later</small>
+            <span>Detections</span>
+            <strong>{{ cards.total_detections if cards.total_detections is defined else 0 }}</strong>
+            <small>From recent analyses</small>
         </div>
     </div>
 </div>
 
-<div class="content-card">
+<div class="content-card fw-capture" id="live-capture">
     <div class="content-card-header">
         <div>
-            <h2>Start a Road Inspection</h2>
-            <p>
-                Upload an image/video, capture GPS location,
-                and create a new inspection record.
-            </p>
+            <h2>Live camera capture</h2>
+            <p>Uses the phone rear camera and GPS at the moment you tap capture. No separate app required.</p>
         </div>
     </div>
+    <div class="p-3 p-md-4">
+        <div class="alert fw-https-note d-none" id="fw-https-note">
+            Camera and GPS only work on HTTPS or localhost. Production must use SSL
+            (Cloudflare or Let's Encrypt).
+        </div>
+        <div class="alert fw-ios-note d-none mb-3" id="fw-ios-note">
+            <strong>iOS users:</strong> You will need to allow camera and location access each time you use this feature.
+            Tap <em>Allow</em> for camera, then <em>Allow</em> for location.
+            Choose <em>Allow Once</em> or <em>Allow While Using App</em>.
+            If you previously denied access, enable Camera and Location for Safari in iOS Settings.
+        </div>
 
+        <div class="fw-capture-stage" id="fw-live-panel">
+            <video id="fw-video" class="fw-capture-video" playsinline autoplay muted></video>
+            <canvas id="fw-canvas" class="d-none"></canvas>
+            <div class="fw-capture-gps" id="fw-gps-status">GPS idle — start the camera to acquire location</div>
+        </div>
+
+        <div class="fw-capture-stage d-none" id="fw-preview-panel">
+            <img id="fw-preview" class="fw-capture-preview" alt="Captured inspection preview">
+            <div class="fw-capture-gps is-ok">Frame frozen — review GPS, then upload or retake</div>
+        </div>
+
+        <p class="fw-coords text-muted mt-3 mb-0" id="fw-coords">Coordinates will appear here after GPS lock.</p>
+
+        <div class="progress fw-progress mt-3 d-none" id="fw-progress">
+            <div class="progress-bar progress-bar-striped progress-bar-animated w-100" role="progressbar"></div>
+        </div>
+
+        <div class="fw-capture-actions">
+            <button type="button" class="btn btn-outline-primary" id="fw-start">Start camera</button>
+            <button type="button" class="btn fw-shutter" id="fw-shutter" disabled>Capture</button>
+            <button type="button" class="btn btn-outline-secondary" id="fw-retake" disabled>Retake</button>
+            <button type="button" class="btn btn-primary" id="fw-upload" disabled>Upload</button>
+            <button type="button" class="btn btn-link" id="fw-close">Close camera</button>
+        </div>
+
+        <div class="alert alert-info mt-3 d-none" id="fw-message" role="status"></div>
+    </div>
+</div>
+
+<div class="content-card mt-4">
+    <div class="content-card-header">
+        <div>
+            <h2>Other actions</h2>
+            <p>File upload, history, and map.</p>
+        </div>
+    </div>
     <div class="quick-actions">
         <a class="quick-action" href="{{ url_for('inspections.new') }}">
-            <i class="fa-solid fa-camera"></i>
-            Create New Inspection
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            Upload from gallery
         </a>
-
         <a class="quick-action" href="{{ url_for('inspections.my_inspections') }}">
             <i class="fa-solid fa-list-check"></i>
             View My Inspections
         </a>
+        <a class="quick-action" href="{{ url_for('protected.map_view') }}">
+            <i class="fa-solid fa-map"></i>
+            GIS Map
+        </a>
     </div>
 </div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ url_for('static', filename='js/field_worker_capture.js') }}"></script>
 {% endblock %}

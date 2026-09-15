@@ -17,7 +17,7 @@
     </div>
 </div>
 
-<div class="content-card" x-data="repairManager()">
+<div class="content-card" x-data="repairManager()" x-init="init()">
     <div class="content-card-header">
         <div>
             <h2>Before / After Comparison</h2>
@@ -31,11 +31,14 @@
                 <label class="form-label fw-semibold">Before repair</label>
                 <input type="file" accept="image/*" class="form-control" @change="setBefore($event)">
                 <div class="repair-compare-frame mt-3">
-                    <template x-if="beforeUrl">
+                    <template x-if="loadingBefore">
+                        <div class="repair-placeholder">Loading before image…</div>
+                    </template>
+                    <template x-if="!loadingBefore && beforeUrl">
                         <img :src="beforeUrl" alt="Before repair">
                     </template>
-                    <template x-if="!beforeUrl">
-                        <div class="repair-placeholder">Before image preview</div>
+                    <template x-if="!loadingBefore && !beforeUrl">
+                        <div class="repair-placeholder" x-text="beforeError || 'Before image preview'"></div>
                     </template>
                 </div>
             </div>
@@ -92,12 +95,42 @@
 <script>
     function repairManager() {
         return {
-            beforeUrl: '',
+            beforeUrl: {{ (before_url or '')|tojson }},
             afterUrl: '',
             beforeFile: null,
             afterFile: null,
             comparing: false,
             result: null,
+            loadingBefore: false,
+            beforeError: {{ (before_error or '')|tojson }},
+            inspectionId: {{ (inspection_id or none)|tojson }},
+            init() {
+                const params = new URLSearchParams(window.location.search);
+                const id = params.get('inspection_id') || this.inspectionId;
+                if (id && !this.beforeUrl) {
+                    this.loadBefore(id);
+                }
+            },
+            async loadBefore(id) {
+                this.loadingBefore = true;
+                this.beforeError = '';
+                try {
+                    const response = await fetch('/api/inspections/' + id + '/before-image', {
+                        credentials: 'same-origin',
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.url) {
+                        this.beforeError = data.error || 'No before image available for this location';
+                        this.beforeUrl = '';
+                        return;
+                    }
+                    this.beforeUrl = data.url;
+                } catch (err) {
+                    this.beforeError = 'No before image available for this location';
+                } finally {
+                    this.loadingBefore = false;
+                }
+            },
             setBefore(event) {
                 const file = event.target.files[0];
                 if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);

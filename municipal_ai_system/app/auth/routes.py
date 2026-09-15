@@ -37,7 +37,8 @@ def login():
 
         login_user(identity, remember=form.remember.data)
         flash(f'Signed in as {identity.full_name}.', 'success')
-        return redirect(_safe_next(request.args.get('next')))
+        # Always land on the role dashboard so a stale ?next= never 500s first paint.
+        return redirect(url_for('dashboard.index'))
 
     return render_template('auth/login.html', form=form)
 

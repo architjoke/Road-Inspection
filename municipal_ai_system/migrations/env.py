@@ -27,6 +27,12 @@ def get_url():
     return Config.SQLALCHEMY_DATABASE_URI
 
 
+_db_url = get_url()
+if _db_url:
+    # Alembic interpolates %, so escape connection-string percent encodings.
+    config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
+
+
 def run_migrations_offline() -> None:
     url = get_url()
     context.configure(

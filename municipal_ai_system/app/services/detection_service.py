@@ -204,6 +204,19 @@ def try_persist_detections_db(
     return inserted
 
 
+def update_memory_detection(detection_id: int, **fields) -> dict[str, Any] | None:
+    with _lock:
+        for row in _memory_detections:
+            if int(row.get("detection_id") or -1) != int(detection_id):
+                continue
+            for key, value in fields.items():
+                if value is not None:
+                    row[key] = value
+            row["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            return deepcopy(row)
+    return None
+
+
 def persist_detections(
     inspection_id: int,
     media_id: int | None,

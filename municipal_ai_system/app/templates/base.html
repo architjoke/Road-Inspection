@@ -23,18 +23,15 @@
             </a>
 
             <div class="d-flex align-items-center gap-3 text-white">
-                <span class="d-none d-md-inline text-white-50">
-                    <i class="fa-regular fa-bell"></i>
-                </span>
-
                 <div class="text-end d-none d-sm-block">
+                    <a href="{{ url_for('protected.profile') }}" class="text-white text-decoration-none">
                     <div class="fw-semibold">
                         {{ current_user.full_name }}
                     </div>
-
                     <small class="text-white-50">
                         {{ current_user.display_role_name }}
                     </small>
+                    </a>
                 </div>
 
                 <form method="POST" action="{{ url_for('auth.logout') }}">

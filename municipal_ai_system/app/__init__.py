@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 import os
 
-from app.config import Config
+from app.config import Config, is_usable_database_url, resolve_offline_mode
 from app.extensions import csrf, db, limiter, login_manager
 
 
@@ -14,12 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _database_configured(app: Flask) -> bool:
-    uri = (app.config.get("SQLALCHEMY_DATABASE_URI") or "").strip()
-    if not uri:
-        return False
-    # Treat unedited .env.example placeholders as "not configured"
-    placeholders = ("USERNAME:PASSWORD", "YOUR-RDS-HOST", "YOUR_HOST", "change-me")
-    return not any(token in uri for token in placeholders)
+    return is_usable_database_url(app.config.get("SQLALCHEMY_DATABASE_URI"))
 
 
 def _wants_json_response() -> bool:
@@ -39,17 +34,19 @@ def create_app(config_overrides: dict | None = None):
         app.config.update(config_overrides)
 
     # Offline/pytest: never attempt remote DB reflection.
-    offline_env = os.getenv("OFFLINE_MODE", "").lower() == "true"
+    if config_overrides and "TESTING" in config_overrides:
+        app.config["TESTING"] = bool(config_overrides.get("TESTING"))
+
     if config_overrides and "OFFLINE_MODE" in config_overrides:
         offline_env = bool(config_overrides.get("OFFLINE_MODE"))
-    if offline_env:
-        app.config["OFFLINE_MODE"] = True
+    elif app.config.get("TESTING"):
+        offline_env = True
+    else:
+        offline_env = resolve_offline_mode()
 
-    if (
-        app.config.get("TESTING")
-        or app.config.get("OFFLINE_MODE")
-        or offline_env
-    ):
+    app.config["OFFLINE_MODE"] = bool(offline_env)
+
+    if app.config.get("TESTING") or offline_env:
         app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {}
         app.config["DATABASE_CONFIGURED"] = False
@@ -58,6 +55,7 @@ def create_app(config_overrides: dict | None = None):
     else:
         db_ok = _database_configured(app)
         app.config["DATABASE_CONFIGURED"] = db_ok
+        app.config["OFFLINE_MODE"] = False
 
     # Phase 14 — structured rotating logs (local files only)
     from app.services.logging_setup import setup_logging
@@ -215,12 +213,18 @@ def create_app(config_overrides: dict | None = None):
     # Phase-3 auth from app.auth (not app.routes.auth)
     from app.auth import auth_bp
     from app.routes import api_bp, dashboard_bp, inspections_bp, protected_bp
+    from app.routes.contractor import contractor_bp
+    from app.routes.training import training_bp
+    from app.routes.field_worker import field_worker_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(inspections_bp)
     app.register_blueprint(protected_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(contractor_bp)
+    app.register_blueprint(training_bp)
+    app.register_blueprint(field_worker_bp)
 
     logger.info(
         "Application ready offline_mode=%s database_configured=%s",

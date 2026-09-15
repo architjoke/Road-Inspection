@@ -1,0 +1,28 @@
+# Root ignore — keep large data and local secrets out of git
+.env
+**/.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store
+
+# Training data (multi-GB) — never commit
+data/**
+!data/README.md
+!data/**/.gitkeep
+
+# Runtime junk
+municipal_ai_system/app/instance/temp/
+municipal_ai_system/app/instance/logs/*.log
+municipal_ai_system/app/instance/logs/*.jsonl
+municipal_ai_system/app/instance/generated_reports/**
+
+# Local weight backups / export clutter
+municipal_ai_system/app/ai_models/best_*.pt
+municipal_ai_system/app/ai_models/*.zip
+municipal_ai_system/app/ai_models/INTEGRATE.txt
+municipal_ai_system/app/ai_models/_extract_best/

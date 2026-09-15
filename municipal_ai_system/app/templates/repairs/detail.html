@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Work orders</p>
+        <h1>{{ page_title }}</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.repairs') }}">Back to list</a>
+</div>
+
+<div class="content-card mb-4">
+    <div class="p-4">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Location</dt>
+            <dd class="col-sm-9">{{ repair.location }}</dd>
+            <dt class="col-sm-3">Damage</dt>
+            <dd class="col-sm-9">{{ repair.damage_type }}</dd>
+            <dt class="col-sm-3">Severity</dt>
+            <dd class="col-sm-9">{{ repair.severity }}</dd>
+            <dt class="col-sm-3">Inspection</dt>
+            <dd class="col-sm-9">
+                {% if repair.inspection_id %}
+                <a href="{{ url_for('inspections.detail', inspection_id=repair.inspection_id) }}">{{ repair.inspection_id }}</a>
+                {% else %}—{% endif %}
+            </dd>
+            <dt class="col-sm-3">Detection</dt>
+            <dd class="col-sm-9">{{ repair.detection_id or "—" }}</dd>
+            <dt class="col-sm-3">Evidence</dt>
+            <dd class="col-sm-9">{{ repair.evidence_filename or repair.evidence_note or "None yet" }}</dd>
+        </dl>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header"><div><h2>Update job</h2></div></div>
+    <form method="POST" class="p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label" for="status">Status</label>
+                <select class="form-select" id="status" name="status">
+                    {% for value in ["open", "assigned", "in_progress", "evidence_uploaded", "verified", "closed", "rejected"] %}
+                    <option value="{{ value }}" {% if repair.status == value %}selected{% endif %}>{{ value.replace('_', ' ') }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="assignee_id">Assignee user ID</label>
+                <input class="form-control" id="assignee_id" name="assignee_id"
+                       value="{{ repair.assignee_id or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="payment_status">Payment</label>
+                <select class="form-select" id="payment_status" name="payment_status">
+                    {% for value in ["pending", "verified", "paid"] %}
+                    <option value="{{ value }}" {% if (repair.payment_status or 'pending') == value %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-12">
+                <label class="form-label" for="notes">Notes</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3">{{ repair.notes or '' }}</textarea>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('protected.repair_evidence', repair_id=repair.id) }}">Upload evidence</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('protected.repairs_verify') }}">Run SSIM</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

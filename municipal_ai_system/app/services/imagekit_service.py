@@ -1,8 +1,13 @@
-"""ImageKit CDN storage for inspection media."""
+"""ImageKit CDN storage for inspection media.
+
+Credentials come from municipal_ai_system/.env via Flask config:
+IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_URL_ENDPOINT.
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -13,30 +18,83 @@ from werkzeug.datastructures import FileStorage
 
 logger = logging.getLogger(__name__)
 
+_PLACEHOLDER_TOKENS = (
+    "xxxxxxxx",
+    "your_imagekit_id",
+    "your-imagekit-id",
+)
+
+
+def _cfg(name: str) -> str:
+    value = current_app.config.get(name)
+    if value is None or str(value).strip() == "":
+        value = os.getenv(name, "")
+    return str(value or "").strip()
+
+
+def _is_placeholder(value: str) -> bool:
+    lowered = value.lower()
+    return any(token in lowered for token in _PLACEHOLDER_TOKENS)
+
+
+def _credentials() -> tuple[str, str, str]:
+    return (
+        _cfg("IMAGEKIT_PRIVATE_KEY"),
+        _cfg("IMAGEKIT_PUBLIC_KEY"),
+        _cfg("IMAGEKIT_URL_ENDPOINT"),
+    )
+
 
 def _client():
     from imagekitio import ImageKit
 
-    private_key = current_app.config.get("IMAGEKIT_PRIVATE_KEY")
-    if not private_key:
+    private_key, public_key, url_endpoint = _credentials()
+    if not private_key or _is_placeholder(private_key):
         raise RuntimeError(
             "IMAGEKIT_PRIVATE_KEY is not configured. "
             "Set ImageKit credentials in municipal_ai_system/.env."
         )
 
-    return ImageKit(private_key=private_key)
+    try:
+        return ImageKit(
+            private_key=private_key,
+            public_key=public_key or None,
+            url_endpoint=url_endpoint or None,
+        )
+    except TypeError:
+        return ImageKit(private_key=private_key)
 
 
 def is_imagekit_configured() -> bool:
-    return bool(
-        current_app.config.get("IMAGEKIT_PRIVATE_KEY")
-        and current_app.config.get("IMAGEKIT_URL_ENDPOINT")
-    )
+    private_key, public_key, url_endpoint = _credentials()
+    if not private_key or not public_key or not url_endpoint:
+        return False
+    if _is_placeholder(private_key) or _is_placeholder(public_key) or _is_placeholder(
+        url_endpoint
+    ):
+        return False
+    return True
 
 
 def _dated_folder(base_folder: str = "inspections") -> str:
     now = datetime.utcnow()
     return f"/{base_folder.strip('/')}/{now.year}/{now.month:02d}/{now.day:02d}"
+
+
+def _do_upload(client, payload, raw_name: str, destination: str, tag_list: list[str]):
+    kwargs = {
+        "file": payload,
+        "file_name": raw_name,
+        "folder": destination,
+        "tags": tag_list or None,
+        "use_unique_file_name": True,
+    }
+    files_api = getattr(client, "files", None)
+    if files_api is not None and hasattr(files_api, "upload"):
+        return files_api.upload(**kwargs)
+    if hasattr(client, "upload"):
+        return client.upload(**kwargs)
+    raise RuntimeError("Unsupported ImageKit SDK: no upload method found.")
 
 
 def upload_to_imagekit(
@@ -76,14 +134,7 @@ def upload_to_imagekit(
                     payload.seek(0)
 
                 client = _client()
-                result = client.files.upload(
-                    file=payload,
-                    file_name=raw_name,
-                    folder=destination,
-                    tags=tag_list or None,
-                    use_unique_file_name=True,
-                    public_key=current_app.config.get("IMAGEKIT_PUBLIC_KEY") or None,
-                )
+                result = _do_upload(client, payload, raw_name, destination, tag_list)
 
                 file_id = getattr(result, "file_id", None) or getattr(result, "fileId", None)
                 url = getattr(result, "url", None)
@@ -149,7 +200,7 @@ def get_transformed_url(image_url: str, transformations: dict | None = None) -> 
     if not image_url:
         return image_url
 
-    endpoint = (current_app.config.get("IMAGEKIT_URL_ENDPOINT") or "").rstrip("/")
+    endpoint = (_cfg("IMAGEKIT_URL_ENDPOINT") or "").rstrip("/")
     transforms = transformations or {}
 
     parts: list[str] = []

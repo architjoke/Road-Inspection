@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Directory</p>
+        <h1>{{ page_title }}</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.municipalities') }}">Back</a>
+</div>
+
+<div class="content-card">
+    <form method="POST" class="p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="name">Name</label>
+                <input class="form-control" id="name" name="name" required
+                       value="{{ municipality.name if municipality else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="code">Code</label>
+                <input class="form-control" id="code" name="code"
+                       value="{{ municipality.code if municipality else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="region">Region</label>
+                <input class="form-control" id="region" name="region"
+                       value="{{ municipality.region if municipality else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="state">State</label>
+                <input class="form-control" id="state" name="state"
+                       value="{{ municipality.state if municipality else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="country">Country</label>
+                <input class="form-control" id="country" name="country"
+                       value="{{ municipality.country if municipality else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="contact_email">Contact email</label>
+                <input class="form-control" id="contact_email" name="contact_email" type="email"
+                       value="{{ municipality.contact_email if municipality else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="contact_phone">Contact phone</label>
+                <input class="form-control" id="contact_phone" name="contact_phone"
+                       value="{{ municipality.contact_phone if municipality else '' }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="address">Address</label>
+                <textarea class="form-control" id="address" name="address" rows="2">{{ municipality.address if municipality else '' }}</textarea>
+            </div>
+        </div>
+        <button class="btn btn-primary mt-4" type="submit">Save</button>
+    </form>
+</div>
+{% endblock %}

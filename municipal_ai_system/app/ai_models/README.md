@@ -2,7 +2,13 @@
 
 ## Detection (Phase 7) — present
 
-Trained Ultralytics YOLOv8 **detection** weights: `best.pt` (~22 MB).
+Trained Ultralytics YOLOv8 **detection** weights:
+
+| File | Role |
+|------|------|
+| `best.pt` | **Active** v2 weights (road+crack, no-AMP, yolov8s, best ~epoch 73) |
+| `best_combined_weak_20260914.pt` | Backup of earlier combined export (weaker on road val) |
+| `best_road_only_20260911.pt` | Backup of earlier India-road-only weights |
 
 - Task: **detect only** (not segmentation)
 - Config: `YOLO_MODEL_PATH` (default: this directory’s `best.pt`)
@@ -12,6 +18,7 @@ Trained Ultralytics YOLOv8 **detection** weights: `best.pt` (~22 MB).
   - 2 `D20_alligator_crack`
   - 3 `D40_pothole`
 - `YOLO_FORCE_MOCK=true` for offline tests without loading weights
+- Do not keep duplicate `best.pt.zip` or extracted zip folders here — PyTorch `.pt` is already a zip archive internally.
 
 ## Segmentation (Phase 8) — optional, not bundled
 

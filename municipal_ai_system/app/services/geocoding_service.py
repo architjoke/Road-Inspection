@@ -17,6 +17,12 @@ USER_AGENT = "MunicipalRoadInspectionSystem/1.0 (municipal-ai; contact=local-dev
 
 # Soft client-side throttle for Nominatim usage policy (~1 req/sec).
 _last_request_at = 0.0
+_GEOCODE_CACHE: dict[tuple[float, float], dict[str, Any]] = {}
+_GEOCODE_CACHE_MAX = 256
+
+
+def _cache_key(latitude: float, longitude: float) -> tuple[float, float]:
+    return (round(float(latitude), 5), round(float(longitude), 5))
 
 
 def _throttle() -> None:
@@ -101,6 +107,11 @@ def reverse_geocode(
     if lat < -90 or lat > 90 or lng < -180 or lng > 180:
         return None
 
+    key = _cache_key(lat, lng)
+    cached = _GEOCODE_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     params = urlencode(
         {
             "lat": f"{lat:.8f}",
@@ -144,10 +155,29 @@ def reverse_geocode(
     if not display:
         return None
 
-    return {
+    landmark = (
+        addr.get("attraction")
+        or addr.get("building")
+        or addr.get("amenity")
+        or addr.get("shop")
+        or addr.get("tourism")
+        or addr.get("suburb")
+        or addr.get("neighbourhood")
+        or addr.get("quarter")
+    )
+    ward = (
+        addr.get("city_district")
+        or addr.get("district")
+        or addr.get("suburb")
+        or addr.get("county")
+    )
+    result = {
         "display_name": display,
         "address": composed or display,
         "road": addr.get("road") or addr.get("pedestrian") or addr.get("residential"),
+        "street_name": addr.get("road") or addr.get("pedestrian") or addr.get("residential"),
+        "landmark": landmark,
+        "ward": ward,
         "suburb": addr.get("suburb") or addr.get("neighbourhood"),
         "city": addr.get("city") or addr.get("town") or addr.get("municipality"),
         "state": addr.get("state"),
@@ -155,6 +185,10 @@ def reverse_geocode(
         "country": addr.get("country"),
         "raw": payload,
     }
+    if len(_GEOCODE_CACHE) >= _GEOCODE_CACHE_MAX:
+        _GEOCODE_CACHE.pop(next(iter(_GEOCODE_CACHE)))
+    _GEOCODE_CACHE[key] = result
+    return result
 
 
 def resolve_location_label(

@@ -12,8 +12,9 @@ GENERIC_LOGIN_ERROR = 'Invalid username or password.'
 ACCOUNT_DISABLED = 'This account is disabled.'
 DATABASE_UNAVAILABLE = 'Database is not available. Try again later.'
 DATABASE_NOT_CONFIGURED = (
-    'Database is not configured. Set DATABASE_URL in municipal_ai_system/.env '
-    '(see .env.example), then restart the Flask app.'
+    'Database is not configured. Put DATABASE_URL in municipal_ai_system/.env '
+    '(RDS URL, not the .env.example placeholder), set OFFLINE_MODE=false in that '
+    'same file, then restart Flask. start.bat must not leave the app in offline mode.'
 )
 
 

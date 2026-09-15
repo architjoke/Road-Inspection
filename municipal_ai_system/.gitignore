@@ -1,13 +1,25 @@
-@"
 .env
-.vscode/
-.idea/
-venv/
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.idea/
 .DS_Store
-municipal_ai_system/app/instance/temp/inspections/
-"@ | Set-Content -Path .gitignore -Encoding utf8
+
+# Runtime / local only
+app/instance/logs/*
+!app/instance/logs/.gitkeep
+app/instance/temp/
+app/instance/generated_reports/*
+!app/instance/generated_reports/.gitkeep
+
+# Weight backups (keep only best.pt in git if needed)
+app/ai_models/*.bak*
+app/ai_models/best_*.pt
+app/ai_models/INTEGRATE.txt
+app/ai_models/_extract_best/
+app/ai_models/*.zip

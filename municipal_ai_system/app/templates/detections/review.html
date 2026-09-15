@@ -130,6 +130,10 @@
                         <td>
                             <span class="badge text-bg-warning" x-show="row.manual_review_required">Required</span>
                             <span class="text-muted" x-show="!row.manual_review_required">—</span>
+                            <div class="mt-1">
+                                <a class="btn btn-sm btn-outline-primary"
+                                   :href="'/detections/' + row.detection_id">Review</a>
+                            </div>
                         </td>
                     </tr>
                 </template>

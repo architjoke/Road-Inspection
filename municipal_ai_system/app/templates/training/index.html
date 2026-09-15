@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}AI model training{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Super Admin</p>
+        <h1>Model training preview</h1>
+        <p class="text-muted mb-0">Run YOLOv8 on a road photo and review bounding boxes with class labels. Uses ImageKit-free local processing.</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="content-card">
+            <form method="POST" enctype="multipart/form-data" class="p-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="form-label" for="image">Training / inference image</label>
+                <input class="form-control" type="file" id="image" name="image" accept="image/*" required>
+                <button class="btn btn-primary mt-3" type="submit">Detect damages</button>
+            </form>
+        </div>
+        {% if detections %}
+        <div class="content-card mt-4">
+            <div class="content-card-header"><div><h2>Detections</h2></div></div>
+            <ul class="list-group list-group-flush">
+                {% for det in detections %}
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>{{ det.damage_type or det.class_name }}</span>
+                    <span>{{ "%.0f"|format((det.confidence or 0) * 100) }}%</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-lg-8">
+        <div class="content-card">
+            <div class="content-card-header"><div><h2>Annotated output</h2><p>Green pothole · yellow longitudinal · orange lateral · red alligator</p></div></div>
+            <div class="p-4">
+                {% if annotated_url %}
+                <img class="inspection-image-preview" src="{{ annotated_url }}" alt="Annotated detections">
+                {% else %}
+                <p class="text-muted mb-0">Upload an image to see bounding boxes and class labels.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

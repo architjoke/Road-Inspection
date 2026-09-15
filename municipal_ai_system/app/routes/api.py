@@ -38,6 +38,29 @@ def _municipality_scope() -> int | None:
     return getattr(current_user, "municipality_id", None)
 
 
+def _filter_map_payload(payload: dict) -> dict:
+    flag = getattr(current_user, "is_contractor", False)
+    is_contractor = flag() if callable(flag) else bool(flag)
+    if not is_contractor or not isinstance(payload, dict):
+        return payload
+    from app.services.repair_service import list_repairs
+
+    cid = getattr(current_user, "id", None) or getattr(current_user, "pk", None)
+    allowed = {
+        row.get("inspection_id")
+        for row in list_repairs(assignee_id=cid)
+        if row.get("inspection_id") is not None
+    }
+    features = [
+        feature
+        for feature in payload.get("features") or []
+        if (feature.get("properties") or {}).get("inspection_id") in allowed
+    ]
+    filtered = dict(payload)
+    filtered["features"] = features
+    return filtered
+
+
 def _parse_date(value: str | None):
     if not value:
         return None
@@ -45,6 +68,50 @@ def _parse_date(value: str | None):
         return datetime.strptime(value[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+@api_bp.route("/inspections/<int:inspection_id>/before-image")
+@login_required
+def inspection_before_image(inspection_id: int):
+    """Return the originally uploaded before image for an inspection."""
+    from app.services.offline_store import offline_mode_enabled, offline_store
+    from app.utils.media_urls import get_before_media, media_public_url
+
+    inspection = None
+    inspection = offline_store.get_inspection(inspection_id)
+    if inspection is None:
+        try:
+            from app.models.inspection import Inspection
+
+            inspection = db.session.get(Inspection, inspection_id)
+        except Exception:
+            inspection = None
+    if inspection is None:
+        return jsonify(
+            {
+                "url": None,
+                "error": "No before image available for this location",
+            }
+        ), 404
+
+    media = get_before_media(inspection)
+    url = media_public_url(media)
+    if not url:
+        return jsonify(
+            {
+                "url": None,
+                "inspection_id": inspection_id,
+                "error": "No before image available for this location",
+            }
+        ), 404
+    return jsonify(
+        {
+            "url": url,
+            "inspection_id": inspection_id,
+            "media_id": getattr(media, "id", None),
+            "file_name": getattr(media, "file_name", None),
+        }
+    )
 
 
 @api_bp.route("/geocode/reverse")
@@ -67,15 +134,24 @@ def geocode_reverse():
             }
         ), 404
 
+    from app.utils.location_format import decimal_to_dms, format_location_line
+
+    location_line = format_location_line(result, lat=lat, lng=lng)
     return jsonify(
         {
             "address": result["address"],
             "display_name": result["display_name"],
             "road": result.get("road"),
+            "street_name": result.get("street_name") or result.get("road"),
+            "landmark": result.get("landmark"),
+            "ward": result.get("ward"),
             "city": result.get("city"),
             "state": result.get("state"),
             "postcode": result.get("postcode"),
             "country": result.get("country"),
+            "location_line": location_line,
+            "latitude_dms": decimal_to_dms(lat, lat=True),
+            "longitude_dms": decimal_to_dms(lng, lat=False),
             "lat": lat,
             "lng": lng,
         }
@@ -90,6 +166,7 @@ def geocode_reverse():
     "field_officer",
     "viewer",
     "field_worker",
+    "contractor",
 )
 def inspections_geojson():
     """GeoJSON FeatureCollection for Leaflet (detections with offline fallback)."""
@@ -114,7 +191,7 @@ def inspections_geojson():
             date_from=date_from,
             date_to=date_to,
         )
-        return jsonify(payload)
+        return jsonify(_filter_map_payload(payload))
     except Exception:
         logger.exception("Failed to build inspections GeoJSON")
         return jsonify({"type": "FeatureCollection", "features": [], "error": "query_failed"}), 500
@@ -128,6 +205,7 @@ def inspections_geojson():
     "field_officer",
     "viewer",
     "field_worker",
+    "contractor",
 )
 def map_detections():
     """
@@ -159,7 +237,7 @@ def map_detections():
             date_from=date_from,
             date_to=date_to,
         )
-        return jsonify(payload)
+        return jsonify(_filter_map_payload(payload))
     except Exception:
         logger.exception("Failed to build /api/map/detections")
         return jsonify({"type": "FeatureCollection", "features": [], "error": "query_failed"}), 500
@@ -173,6 +251,7 @@ def map_detections():
     "field_officer",
     "viewer",
     "field_worker",
+    "contractor",
 )
 def inspections_radius():
     """Nearby detections/inspections (PostGIS or Haversine offline fallback)."""
@@ -207,7 +286,7 @@ def inspections_radius():
             severity=severity,
             priority=priority,
         )
-        return jsonify(payload)
+        return jsonify(_filter_map_payload(payload))
     except Exception:
         logger.exception("Radius search failed")
         return jsonify({"type": "FeatureCollection", "features": [], "error": "query_failed"}), 500
@@ -472,6 +551,29 @@ def detections_detail(detection_id: int):
     return jsonify(payload)
 
 
+@api_bp.route("/detections/<int:detection_id>/review", methods=["POST"])
+@login_required
+@roles_required("field_officer", "municipal_admin", "super_admin")
+def detections_review(detection_id: int):
+    from app.services.review_service import review_detection
+
+    payload = request.get_json(silent=True) or {}
+    decision = payload.get("decision") or request.form.get("decision")
+    comment = payload.get("comment") or request.form.get("comment")
+    try:
+        updated = review_detection(
+            detection_id,
+            decision=decision or "",
+            reviewer_name=getattr(current_user, "full_name", None),
+            comment=comment,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if updated is None:
+        return jsonify({"error": "Detection not found."}), 404
+    return jsonify(updated)
+
+
 @api_bp.route("/verification/compare", methods=["POST"])
 @csrf.exempt
 @limiter.limit("20 per minute")
@@ -480,7 +582,6 @@ def detections_detail(detection_id: int):
     "super_admin",
     "municipal_admin",
     "field_officer",
-    "contractor",
 )
 def verification_compare():
     """
@@ -575,7 +676,6 @@ def verification_compare():
     "super_admin",
     "municipal_admin",
     "field_officer",
-    "contractor",
     "viewer",
 )
 def verification_detail(comparison_id: str):
@@ -593,7 +693,6 @@ def verification_detail(comparison_id: str):
     "super_admin",
     "municipal_admin",
     "field_officer",
-    "contractor",
     "viewer",
 )
 def verification_list():

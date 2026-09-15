@@ -14,8 +14,16 @@
         <p class="page-kicker">Inspection detail</p>
         <h1>{{ inspection.inspection_code }}</h1>
         <p class="text-muted mb-0">
-            Submitted on
-            {{ inspection.inspection_date.strftime("%d %B %Y, %I:%M %p") }}
+            {% if inspection.inspection_date %}
+            Submitted {{ inspection.inspection_date.strftime("%d %B %Y, %I:%M %p") }}.
+            {% endif %}
+            {{ inspection.location_name or "Location not recorded" }}
+            {% if inspection.location_latitude and inspection.location_longitude %}
+            <span class="d-block small" title="Decimal {{ inspection.location_latitude }}, {{ inspection.location_longitude }}">
+                GPS {{ "%.6f"|format(inspection.location_latitude|float) }},
+                {{ "%.6f"|format(inspection.location_longitude|float) }}
+            </span>
+            {% endif %}
         </p>
     </div>
 
@@ -32,6 +40,7 @@
     {% endif %}
 </div>
 
+{% if current_user.dashboard_role_key != 'contractor' %}
 <div class="content-card mb-4">
     <div class="content-card-header">
         <div>
@@ -55,61 +64,26 @@
         <a class="btn btn-link" href="{{ url_for('protected.reports') }}">Reports dashboard</a>
     </div>
 </div>
+{% endif %}
 
 <div class="row g-4">
     <div class="col-lg-7">
         <div class="content-card">
             <div class="content-card-header">
                 <div>
-                    <h2>Uploaded Media</h2>
-                    <p>Field evidence for this inspection (local or ImageKit CDN).</p>
+                    <h2>Before image</h2>
+                    <p>Original uploaded evidence for this location.</p>
                 </div>
             </div>
 
             <div class="p-4">
-                {% for media in inspection.media_items %}
-                <div class="media-detail-card mb-3">
-                    <div>
-                        <div class="fw-semibold">{{ media.file_name }}</div>
-                        <small class="text-muted">
-                            {{ media.media_type.title() }}
-                            {% if media.file_size_bytes %}
-                            · {{ "%.2f"|format(media.file_size_bytes / 1024 / 1024) }} MB
-                            {% endif %}
-                            {% if media.storage_bucket %}
-                            · {{ media.storage_bucket }}
-                            {% endif %}
-                        </small>
-                    </div>
-
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-outline-primary btn-sm"
-                            @click="$dispatch('open-media-modal', { src: '{{ url_for('inspections.view_media', media_id=media.id) }}', title: '{{ media.file_name|e }}' })">
-                            <i class="fa-solid fa-expand me-1"></i>
-                            Preview
-                        </button>
-                        <a class="btn btn-outline-secondary btn-sm"
-                            href="{{ url_for('inspections.view_media', media_id=media.id) }}" target="_blank">
-                            Open
-                        </a>
-                    </div>
-                </div>
-
-                {% if media.media_type == "image" %}
-                <img class="inspection-image-preview"
-                    src="{{ media.cdn_url or url_for('inspections.view_media', media_id=media.id) }}"
-                    alt="Inspection image {{ media.file_name }}">
-                {% elif media.media_type == "video" %}
-                <video class="inspection-image-preview" controls
-                    src="{{ media.cdn_url or url_for('inspections.view_media', media_id=media.id) }}"></video>
-                {% endif %}
-
-                {% if media.cdn_url %}
-                <p class="small text-muted mt-2 mb-0">ImageKit: {{ media.cdn_url }}</p>
-                {% endif %}
+                {% if before_url %}
+                <img class="inspection-image-preview" src="{{ before_url }}" alt="Before image">
+                {% elif before_missing %}
+                <div class="alert alert-warning mb-0">No before image available for this location</div>
                 {% else %}
-                <p class="text-muted mb-0">No media record is attached to this inspection.</p>
-                {% endfor %}
+                <div class="alert alert-warning mb-0">No before image available for this location</div>
+                {% endif %}
             </div>
         </div>
 
@@ -186,6 +160,19 @@
                         <dt>Street Address</dt>
                         <dd>{{ inspection.location_name or "Not provided" }}</dd>
                     </div>
+                    {% set geo = (inspection.media_items[0].exif_data if inspection.media_items else {}) or {} %}
+                    {% if geo.latitude_dms %}
+                    <div>
+                        <dt>GPS (DMS)</dt>
+                        <dd>{{ geo.latitude_dms }}, {{ geo.longitude_dms }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if geo.landmark or geo.ward or geo.city %}
+                    <div>
+                        <dt>Landmark / ward / city</dt>
+                        <dd>{{ geo.landmark or "—" }} · {{ geo.ward or "—" }} · {{ geo.city or "—" }}</dd>
+                    </div>
+                    {% endif %}
                     <div>
                         <dt>Latitude</dt>
                         <dd>{{ inspection.location_latitude or "Not captured" }}</dd>

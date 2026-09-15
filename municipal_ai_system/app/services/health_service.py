@@ -95,8 +95,20 @@ def build_health_payload(app) -> dict[str, Any]:
         "status": "ok",
     }
 
+    from app.services.imagekit_service import is_imagekit_configured
+
+    imagekit_ok = False
+    try:
+        imagekit_ok = is_imagekit_configured()
+    except Exception:
+        imagekit_ok = False
+
     components = {
         "offline_mode": {"enabled": offline, "status": "ok"},
+        "imagekit": {
+            "configured": imagekit_ok,
+            "status": "ok" if imagekit_ok else ("skipped_offline" if offline else "unconfigured"),
+        },
         "database": {
             "configured": db_configured,
             "contacted": False,

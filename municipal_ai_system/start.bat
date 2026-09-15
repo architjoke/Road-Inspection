@@ -11,15 +11,17 @@ if not exist ".env" (
   if exist ".env.example" copy /Y ".env.example" ".env" >nul
 )
 
-set OFFLINE_MODE=true
-set FLASK_DEBUG=true
-set FLASK_HOST=0.0.0.0
-set FLASK_PORT=5000
+REM Do not force OFFLINE_MODE here. run.py reads municipal_ai_system/.env
+REM A real DATABASE_URL enables RDS login; placeholder URL stays offline.
+
+if not defined FLASK_DEBUG set FLASK_DEBUG=true
+if not defined FLASK_HOST set FLASK_HOST=0.0.0.0
+if not defined FLASK_PORT set FLASK_PORT=5000
 
 if not exist "app\instance\logs" mkdir "app\instance\logs"
 if not exist "app\instance\generated_reports" mkdir "app\instance\generated_reports"
 if not exist "app\instance\temp\inspections" mkdir "app\instance\temp\inspections"
 
-echo Starting Municipal Road Inspection System (OFFLINE_MODE=%OFFLINE_MODE%)...
+echo Starting Municipal Road Inspection System...
 "venv\Scripts\python.exe" run.py
 endlocal

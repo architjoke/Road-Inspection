@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title or "Profile" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Account</p>
+        <h1>{{ page_title or "Profile" }}</h1>
+        <p class="text-muted mb-0">Signed-in identity and password change.</p>
+    </div>
+</div>
+
+<div class="content-card mb-4">
+    <div class="p-4">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Full name</dt>
+            <dd class="col-sm-9">{{ user.full_name }}</dd>
+            <dt class="col-sm-3">Username</dt>
+            <dd class="col-sm-9">{{ user.username }}</dd>
+            <dt class="col-sm-3">Email</dt>
+            <dd class="col-sm-9">{{ user.email }}</dd>
+            <dt class="col-sm-3">Role</dt>
+            <dd class="col-sm-9">{{ user.display_role_name }}</dd>
+            <dt class="col-sm-3">Municipality ID</dt>
+            <dd class="col-sm-9">{{ user.municipality_id or "—" }}</dd>
+        </dl>
+    </div>
+</div>
+
+{% if contractor_jobs is defined and contractor_jobs %}
+<div class="content-card mb-4">
+    <div class="content-card-header">
+        <div>
+            <h2>Assigned work & payments</h2>
+            <p>{{ contractor_stats.total or 0 }} job(s) · {{ contractor_stats.completed or 0 }} completed</p>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Payment</th></tr></thead>
+            <tbody>
+                {% for job in contractor_jobs %}
+                <tr>
+                    <td>{{ job.id }}</td>
+                    <td>{{ job.location }}</td>
+                    <td>{{ job.status }}</td>
+                    <td>{{ job.payment_status or "pending" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div>
+            <h2>Change password</h2>
+            <p>Use at least 8 characters. RDS accounts update immediately when the database is connected.</p>
+        </div>
+    </div>
+    <form method="POST" class="p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label" for="current_password">Current password</label>
+                <input class="form-control" type="password" id="current_password" name="current_password">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="new_password">New password</label>
+                <input class="form-control" type="password" id="new_password" name="new_password" minlength="8">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="confirm_password">Confirm</label>
+                <input class="form-control" type="password" id="confirm_password" name="confirm_password" minlength="8">
+            </div>
+        </div>
+        <button class="btn btn-primary mt-4" type="submit">Update password</button>
+    </form>
+</div>
+{% endblock %}

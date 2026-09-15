@@ -1,12 +1,13 @@
-"""WSGI entrypoint for production-style local launch (no remote services required)."""
+"""WSGI entrypoint. Loads .env before deciding online vs offline."""
 
 from __future__ import annotations
 
 import os
 
-# Prefer offline mode when launching without an explicit DATABASE_URL.
-if os.getenv("OFFLINE_MODE") is None and not os.getenv("DATABASE_URL"):
-    os.environ.setdefault("OFFLINE_MODE", "true")
+from app.config import load_project_env, resolve_offline_mode
+
+load_project_env()
+os.environ["OFFLINE_MODE"] = "true" if resolve_offline_mode() else "false"
 
 from app import create_app  # noqa: E402
 

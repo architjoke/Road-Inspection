@@ -12,6 +12,7 @@ from app.models.inspection import Inspection
 from app.models.inspection_media import InspectionMedia
 from app.services.gps_service import resolve_inspection_gps
 from app.services.geocoding_service import resolve_location_label, reverse_geocode
+from app.utils.location_format import decimal_to_dms, format_location_line
 from app.services.media_service import save_phase4_temp_media
 from app.services.offline_store import offline_mode_enabled, offline_store
 from app.services.ward_service import find_ward_for_point
@@ -93,8 +94,23 @@ def _create_inspection_offline(
             "needs_review": needs_review,
             "imagekit_file_id": saved_media.get("image_id"),
             "street_address": street_address,
+            "street_name": (geocoded or {}).get("street_name") or (geocoded or {}).get("road"),
+            "landmark": (geocoded or {}).get("landmark"),
+            "ward": (geocoded or {}).get("ward"),
+            "city": (geocoded or {}).get("city"),
+            "latitude_dms": decimal_to_dms(float(latitude), lat=True),
+            "longitude_dms": decimal_to_dms(float(longitude), lat=False),
             "geocode_display_name": (geocoded or {}).get("display_name"),
             "local_path": saved_media.get("local_path"),
+            "gps_accuracy_meters": float(accuracy) if accuracy is not None else None,
+            "location_details": {
+                "street_name": (geocoded or {}).get("street_name") or (geocoded or {}).get("road"),
+                "landmark": (geocoded or {}).get("landmark"),
+                "ward": (geocoded or {}).get("ward"),
+                "city": (geocoded or {}).get("city"),
+                "state": (geocoded or {}).get("state"),
+                "country": (geocoded or {}).get("country"),
+            },
             "offline": True,
         },
         storage_bucket=saved_media["storage_bucket"],
@@ -166,21 +182,34 @@ def create_inspection_with_media(
         "location",
         "unknown",
     }
-    if not location_name or location_name.lower() in placeholder_names:
-        if offline_mode_enabled():
-            location_name = (location_name or "").strip() or (
-                f"{float(latitude):.6f}, {float(longitude):.6f}"
-            )
-        else:
-            location_name = resolve_location_label(
-                float(latitude),
-                float(longitude),
-                fallback=location_name or None,
-            )
+    geo_parts = geocoded or {}
+    formatted = format_location_line(
+        {
+            "street_name": geo_parts.get("street_name") or geo_parts.get("road"),
+            "landmark": geo_parts.get("landmark"),
+            "ward": geo_parts.get("ward"),
+            "city": geo_parts.get("city"),
+            "address": street_address,
+        },
+        lat=latitude,
+        lng=longitude,
+    )
+    capture_mode = str(form_data.get("capture_mode") or "").strip() in {"1", "true", "yes"}
+    if capture_mode:
+        from app.utils.location_format import format_capture_location
+
+        formatted = format_capture_location(geo_parts)
+        if formatted == "Unknown Location" and not geocoded:
+            location_name = location_name or "Unknown Location"
+        elif not location_name or location_name.lower() in placeholder_names:
+            location_name = formatted
+    elif not location_name or location_name.lower() in placeholder_names:
+        location_name = formatted
     elif street_address and street_address.lower() not in location_name.lower():
-        # Keep worker note + append resolved address for searchability
         if len(location_name) < 80:
             location_name = f"{location_name} — {street_address}"
+    if len(location_name) > 255:
+        location_name = location_name[:252] + "…"
 
     if not location_name:
         raise ValueError("Road or location name is required.")
@@ -293,8 +322,23 @@ def create_inspection_with_media(
                 "needs_review": needs_review,
                 "imagekit_file_id": saved_media.get("image_id"),
                 "street_address": street_address,
+                "street_name": (geocoded or {}).get("street_name") or (geocoded or {}).get("road"),
+                "landmark": (geocoded or {}).get("landmark"),
+                "ward": (geocoded or {}).get("ward"),
+                "city": (geocoded or {}).get("city"),
+                "latitude_dms": decimal_to_dms(float(latitude), lat=True),
+                "longitude_dms": decimal_to_dms(float(longitude), lat=False),
                 "geocode_display_name": (geocoded or {}).get("display_name"),
                 "local_path": saved_media.get("local_path"),
+                "gps_accuracy_meters": float(accuracy) if accuracy is not None else None,
+                "location_details": {
+                    "street_name": (geocoded or {}).get("street_name") or (geocoded or {}).get("road"),
+                    "landmark": (geocoded or {}).get("landmark"),
+                    "ward": (geocoded or {}).get("ward"),
+                    "city": (geocoded or {}).get("city"),
+                    "state": (geocoded or {}).get("state"),
+                    "country": (geocoded or {}).get("country"),
+                },
             },
             is_before_image=True,
             is_after_image=False,

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">AI review</p>
+        <h1>{{ page_title }}</h1>
+        <p class="text-muted mb-0">{{ detection.damage_type or detection.class_name }} · inspection {{ detection.inspection_id }}</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.detections') }}">All detections</a>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="content-card">
+            <div class="p-4">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Severity</dt>
+                    <dd class="col-sm-8">{{ detection.severity or "—" }}</dd>
+                    <dt class="col-sm-4">Confidence</dt>
+                    <dd class="col-sm-8">{{ "%.2f"|format(detection.confidence) if detection.confidence is not none else "—" }}</dd>
+                    <dt class="col-sm-4">Priority</dt>
+                    <dd class="col-sm-8">{{ detection.priority or "—" }}</dd>
+                    <dt class="col-sm-4">Recommended action</dt>
+                    <dd class="col-sm-8">{{ detection.recommended_action or "—" }}</dd>
+                    <dt class="col-sm-4">Status</dt>
+                    <dd class="col-sm-8">{{ detection.status or "—" }}</dd>
+                    <dt class="col-sm-4">Explanation</dt>
+                    <dd class="col-sm-8">{{ detection.explanation or "—" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="content-card mb-4">
+            <div class="content-card-header"><div><h2>Review decision</h2></div></div>
+            <form method="POST" class="p-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label class="form-label" for="decision">Decision</label>
+                    <select class="form-select" id="decision" name="decision" required>
+                        <option value="approved">Approve</option>
+                        <option value="rejected">Reject (false positive)</option>
+                        <option value="needs_field_check">Needs field check</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="comment">Comment</label>
+                    <textarea class="form-control" id="comment" name="comment" rows="3"></textarea>
+                </div>
+                <button class="btn btn-primary" type="submit">Save review</button>
+            </form>
+        </div>
+        <div class="content-card">
+            <div class="content-card-header"><div><h2>Create repair job</h2></div></div>
+            <form method="POST" class="p-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="create_repair">
+                <div class="mb-3">
+                    <label class="form-label" for="notes">Assignment notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                </div>
+                <button class="btn btn-outline-primary" type="submit">Create repair</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

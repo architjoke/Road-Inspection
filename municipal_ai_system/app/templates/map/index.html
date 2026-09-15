@@ -120,6 +120,14 @@
             <div id="inspection-map" data-geojson-url="{{ geojson_url }}" data-wards-url="{{ wards_url }}"
                 data-radius-url="{{ radius_url }}"></div>
             <div class="map-status" id="map-status">Loading map data…</div>
+            <div class="map-before-panel p-3 border-top" id="map-before-panel">
+                <strong>Before image</strong>
+                <p class="small text-muted mb-2" id="map-before-caption">Click a location marker to load the original capture.</p>
+                <div id="map-before-frame" class="repair-compare-frame">
+                    <div class="repair-placeholder" id="map-before-placeholder">No location selected</div>
+                    <img id="map-before-img" class="inspection-image-preview d-none" alt="Before image for selected location">
+                </div>
+            </div>
         </div>
     </div>
 </div>

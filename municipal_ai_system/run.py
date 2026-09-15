@@ -20,15 +20,11 @@ def _bootstrap_dirs() -> None:
 def main() -> None:
     _bootstrap_dirs()
 
-    # Default to offline when DATABASE_URL is unset / placeholder.
-    if os.getenv("OFFLINE_MODE") is None:
-        db_url = os.getenv("DATABASE_URL") or ""
-        if (
-            not db_url
-            or "YOUR-RDS-HOST" in db_url
-            or "USERNAME:PASSWORD" in db_url
-        ):
-            os.environ.setdefault("OFFLINE_MODE", "true")
+    from app.config import is_usable_database_url, load_project_env, resolve_offline_mode
+
+    load_project_env()
+    offline = resolve_offline_mode()
+    os.environ["OFFLINE_MODE"] = "true" if offline else "false"
 
     from app import create_app
 
@@ -36,6 +32,11 @@ def main() -> None:
     debug = os.getenv("FLASK_DEBUG", "true").lower() == "true"
     host = os.getenv("FLASK_HOST", "0.0.0.0")
     port = int(os.getenv("FLASK_PORT", "5000"))
+    db_ok = is_usable_database_url(os.getenv("DATABASE_URL"))
+    mode = "OFFLINE (no RDS login)" if offline else "ONLINE (RDS + ImageKit)"
+    print(f"Starting Municipal Road Inspection System — {mode}")
+    if not offline and not db_ok:
+        print("WARNING: DATABASE_URL is missing or still a placeholder.")
     application.run(debug=debug, host=host, port=port)
 
 

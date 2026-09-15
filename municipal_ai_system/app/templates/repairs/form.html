@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Work orders</p>
+        <h1>{{ page_title }}</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.repairs') }}">Back</a>
+</div>
+
+<div class="content-card">
+    <form method="POST" class="p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="location">Location</label>
+                <input class="form-control" id="location" name="location" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="damage_type">Damage type</label>
+                <input class="form-control" id="damage_type" name="damage_type" placeholder="pothole, crack…">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="severity">Severity</label>
+                <select class="form-select" id="severity" name="severity">
+                    <option>MINOR</option>
+                    <option selected>MODERATE</option>
+                    <option>SEVERE</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="inspection_id">Inspection ID</label>
+                <input class="form-control" id="inspection_id" name="inspection_id" type="number">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="detection_id">Detection ID</label>
+                <input class="form-control" id="detection_id" name="detection_id" type="number">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="assignee_id">Assignee user ID</label>
+                <input class="form-control" id="assignee_id" name="assignee_id" type="number">
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="notes">Notes</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+            </div>
+        </div>
+        <button class="btn btn-primary mt-4" type="submit">Create job</button>
+    </form>
+</div>
+{% endblock %}

@@ -88,13 +88,17 @@ function inspectionUploadForm() {
 
                 const current = (locationInput.value || "").trim();
                 const placeholders = ["", "field upload", "road inspection", "location"];
+                const line = data.location_line || data.address || data.display_name;
+                if (!line) {
+                    return;
+                }
                 if (!current || placeholders.includes(current.toLowerCase())) {
-                    locationInput.value = address;
-                } else if (!current.includes(address)) {
-                    locationInput.value = `${current} — ${address}`;
+                    locationInput.value = line.replace(/^Location:\s*/i, "");
+                } else if (!current.includes(data.address || "")) {
+                    locationInput.value = `${current} — ${data.address}`;
                 }
 
-                window.RoadInspectionUI?.toast(`Address: ${address}`, "success");
+                window.RoadInspectionUI?.toast(line, "success");
             } catch (error) {
                 console.warn("Address lookup failed", error);
             } finally {

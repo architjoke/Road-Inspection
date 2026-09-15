@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Boundaries</p>
+        <h1>{{ page_title }}</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.wards') }}">Back</a>
+</div>
+
+<div class="content-card">
+    <form method="POST" class="p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="name">Ward name</label>
+                <input class="form-control" id="name" name="name" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="code">Code</label>
+                <input class="form-control" id="code" name="code">
+            </div>
+            {% if is_super %}
+            <div class="col-md-6">
+                <label class="form-label" for="municipality_id">Municipality</label>
+                <select class="form-select" id="municipality_id" name="municipality_id">
+                    {% for m in municipalities %}
+                    <option value="{{ m.id }}">{{ m.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-6">
+                <label class="form-label" for="administrator_name">Administrator</label>
+                <input class="form-control" id="administrator_name" name="administrator_name">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="administrator_email">Admin email</label>
+                <input class="form-control" id="administrator_email" name="administrator_email" type="email">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="administrator_phone">Admin phone</label>
+                <input class="form-control" id="administrator_phone" name="administrator_phone">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="population">Population</label>
+                <input class="form-control" id="population" name="population" type="number" min="0">
+            </div>
+        </div>
+        <button class="btn btn-primary mt-4" type="submit">Create ward</button>
+    </form>
+</div>
+{% endblock %}

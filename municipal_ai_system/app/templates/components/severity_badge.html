@@ -1,0 +1,4 @@
+{% set label = (severity or status or value or 'unknown')|string %}
+<span class="badge text-bg-{{ 'danger' if label|upper == 'SEVERE' else 'warning' if label|upper == 'MODERATE' else 'secondary' }}">
+    {{ label.replace('_', ' ') }}
+</span>

@@ -3,6 +3,7 @@
 {% block title %}Viewer Dashboard{% endblock %}
 
 {% block content %}
+{% set cards = analytics.cards if analytics else {} %}
 <div class="page-header">
     <div>
         <p class="page-kicker">Read-only monitoring</p>
@@ -11,7 +12,6 @@
             View inspections, road-condition maps, and reports with read-only access.
         </p>
     </div>
-
     <a class="btn btn-primary" href="{{ url_for('protected.map_view') }}">
         <i class="fa-solid fa-map me-2"></i>
         Open GIS Map
@@ -22,24 +22,37 @@
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-info">
             <span>Visible Inspections</span>
-            <strong>—</strong>
+            <strong>{{ cards.total_inspections if cards.total_inspections is defined else 0 }}</strong>
             <small>Read-only inspection records</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-warning">
             <span>Open Road Issues</span>
-            <strong>—</strong>
+            <strong>{{ cards.total_detections if cards.total_detections is defined else 0 }}</strong>
             <small>Current unresolved defects</small>
         </div>
     </div>
-
     <div class="col-sm-6 col-xl-4">
         <div class="stat-card stat-success">
-            <span>Available Reports</span>
-            <strong>—</strong>
-            <small>Reports you can view or download</small>
+            <span>Reports ready</span>
+            <strong>{{ cards.total_inspections if cards.total_inspections is defined else 0 }}</strong>
+            <small>Export from the Reports page</small>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="content-card h-100">
+            <div class="content-card-header"><div><h2>Severity</h2><p>Public snapshot</p></div></div>
+            <div class="p-3"><canvas id="chart-severity" height="180"></canvas></div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="content-card h-100">
+            <div class="content-card-header"><div><h2>Damage types</h2><p>Read-only</p></div></div>
+            <div class="p-3"><canvas id="chart-damage" height="180"></canvas></div>
         </div>
     </div>
 </div>
@@ -54,22 +67,40 @@
             </p>
         </div>
     </div>
-
     <div class="quick-actions">
-        <a class="quick-action" href="{{ url_for('protected.inspections') }}">
+        <a class="quick-action" href="{{ url_for('inspections.list_all') }}">
             <i class="fa-solid fa-clipboard-list"></i>
             View Inspections
         </a>
-
         <a class="quick-action" href="{{ url_for('protected.map_view') }}">
             <i class="fa-solid fa-map-location-dot"></i>
             View GIS Map
         </a>
-
         <a class="quick-action" href="{{ url_for('protected.reports') }}">
             <i class="fa-solid fa-file-lines"></i>
             View Reports
         </a>
     </div>
 </div>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+    const analytics = {{ analytics|tojson if analytics else 'null' }};
+    function makeChart(id, type, labels, values, colors) {
+        const el = document.getElementById(id);
+        if (!el || typeof Chart === 'undefined' || !labels) return;
+        new Chart(el, {
+            type,
+            data: { labels, datasets: [{ data: values, backgroundColor: colors }] },
+            options: { responsive: true, plugins: { legend: { display: type === 'pie' } },
+                scales: type === 'pie' ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+    }
+    if (analytics) {
+        makeChart('chart-severity', 'bar', analytics.severity_bar.labels, analytics.severity_bar.values, ['#dc2626', '#ea580c', '#16a34a']);
+        makeChart('chart-damage', 'pie', analytics.damage_pie.labels, analytics.damage_pie.values, ['#16a34a', '#eab308', '#f97316', '#dc2626']);
+    }
+</script>
 {% endblock %}

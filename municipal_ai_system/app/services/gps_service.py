@@ -164,9 +164,30 @@ def _extract_from_pil_image(image: Image.Image) -> dict | None:
     if latitude == 0 and longitude == 0:
         return None
 
+    altitude = None
+    alt_values = gps_data.get("GPSAltitude")
+    if alt_values is not None:
+        try:
+            if hasattr(alt_values, "numerator"):
+                altitude = float(alt_values.numerator) / float(alt_values.denominator or 1)
+            elif isinstance(alt_values, (tuple, list)) and len(alt_values) == 2:
+                altitude = float(alt_values[0]) / float(alt_values[1] or 1)
+            else:
+                altitude = float(alt_values)
+            alt_ref = gps_data.get("GPSAltitudeRef")
+            if alt_ref in (1, "1", b"\x01"):
+                altitude = -abs(altitude)
+        except (TypeError, ValueError, ZeroDivisionError):
+            altitude = None
+
+    from app.utils.location_format import decimal_to_dms
+
     return {
         "latitude": round(latitude, 8),
         "longitude": round(longitude, 8),
+        "latitude_dms": decimal_to_dms(latitude, lat=True),
+        "longitude_dms": decimal_to_dms(longitude, lat=False),
+        "altitude_meters": altitude,
         "accuracy": accuracy,
         "source": "exif",
     }

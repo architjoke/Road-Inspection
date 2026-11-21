@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title or "Users" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Accounts</p>
+        <h1>{{ page_title or "User Management" }}</h1>
+        <p class="text-muted mb-0">
+            Staff accounts loaded from the municipal database.
+        </p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('protected.user_create') }}">
+        <i class="fa-solid fa-user-plus me-2"></i>
+        Add user
+    </a>
+</div>
+
+<div class="content-card">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Full name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Municipality</th>
+                    <th>Active</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td class="fw-semibold">{{ user.username }}</td>
+                    <td>{{ user.full_name }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.display_role_name if user.display_role_name is defined else (user.role_name or "—") }}</td>
+                    <td>
+                        {% if user.municipality %}
+                            {{ user.municipality.name }}
+                        {% else %}
+                            {{ user.municipality_id or "—" }}
+                        {% endif %}
+                    </td>
+                    <td>{{ "Yes" if user.is_active else "No" }}</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="{{ url_for('protected.user_edit', user_id=user.id) }}">Edit</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        {% if not database_configured %}
+                            Database is not configured. Set DATABASE_URL in .env (project root) and restart.
+                        {% else %}
+                            No users were found.
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

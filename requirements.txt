@@ -1,0 +1,43 @@
+# All Python dependencies (web app, tests, training scripts).
+# For GPU training install the CUDA build of torch first:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# Flask core
+Flask==3.0.3
+python-dotenv==1.0.1
+Werkzeug==3.0.3
+bcrypt==4.1.3
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+Flask-Limiter==3.8.0
+WTForms==3.1.2
+email-validator==2.2.0
+
+# Postgres + PostGIS
+SQLAlchemy==2.0.30
+Flask-SQLAlchemy==3.1.1
+psycopg2-binary==2.9.9
+alembic==1.13.1
+geoalchemy2==0.14.7
+Pillow==10.3.0
+
+# Media + HTTP (ImageKit fetch, reverse geocoding)
+imagekitio>=4.0.0
+opencv-python-headless==4.10.0.84
+numpy>=1.26
+requests>=2.31
+
+# YOLO inference (CPU is fine for the web app)
+ultralytics>=8.1.0
+torch>=2.0.0
+
+# Reports
+reportlab==4.2.5
+openpyxl==3.1.5
+pandas>=2.0.0
+
+# Tests
+pytest>=8.0.0
+
+# Training scripts (scripts/training)
+PyYAML>=6.0

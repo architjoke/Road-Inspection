@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default=None, help="override base weights, e.g. yolo26s.pt / yolov8m.pt")
     ap.add_argument("--weights", type=Path, default=None, help="start weights (required for finetune)")
     ap.add_argument("--epochs", type=int, default=None)
+    ap.add_argument("--hours", type=float, default=None,
+                    help="wall-clock budget; training stops in time and keeps best.pt "
+                         "(e.g. 10.5 for a 12 h Kaggle session)")
     ap.add_argument("--batch", type=int, default=None, help="drop to 8/6 on CUDA OOM")
     ap.add_argument("--imgsz", type=int, default=None)
     ap.add_argument("--device", default="0")
@@ -148,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         val=True,
         **hyp,
     )
+    if args.hours:
+        train_args["time"] = float(args.hours)  # Ultralytics: overrides epochs, schedule fits the budget
     print(json.dumps({"base_weights": base, "profile": args.profile, **train_args}, indent=2))
     if args.dry_run:
         return 0

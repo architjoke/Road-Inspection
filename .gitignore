@@ -27,6 +27,7 @@ data/
 
 # Model artifacts: only the promoted best.pt + best.model.json are tracked
 artifacts/runs/
+artifacts/kaggle/
 artifacts/backups/
 artifacts/ai_models/best_*.pt
 artifacts/ai_models/*.bak*

@@ -37,6 +37,40 @@ What the old runs got wrong, and what the recipe changes:
 | Inference size not tied to training | `best.model.json` carries `imgsz`; app uses it (`YOLO_IMGSZ=auto`) |
 | AMP NaN / zero-mAP runs wasted hours | AMP off by default + collapse guard stops the run |
 
+## Where to train
+
+| Machine | Time for the `laptop` profile | Notes |
+|---|---|---|
+| **Kaggle free GPU** (T4 / P100) | ~5–8 h | recommended — free, runs in the background (12 h session) |
+| RTX 4060 laptop | ~5–7 h | AMP off on that machine |
+| Dev PC (MSI, i7-13700H, Intel Iris Xe — no NVIDIA GPU) | ~2.4 h **per epoch** → 10–15 days | measured 2026-11-21: 2.1 s/image on CPU; not practical |
+
+## Train on Kaggle (free GPU) — step by step
+
+1. **Package** (on this PC, project root):
+   `python scripts/training/package_kaggle.py`
+   → `artifacts/kaggle/road-inspection-india.zip` (≈545 MB: `road_v2`, the training
+   scripts, current `best.pt` as baseline) and `artifacts/kaggle/kaggle_train.ipynb`.
+2. **Upload the data:** kaggle.com → *Datasets* → *New Dataset* → drop the zip →
+   keep it *Private* → *Create*.
+3. **Import the notebook:** *Code* → *New Notebook* → *File* → *Import Notebook* →
+   choose `kaggle_train.ipynb`.
+4. **Notebook settings:** *Accelerator* **GPU T4 x2** (or P100), *Internet* **On**
+   (needs a phone-verified account), *Add Input* → your dataset.
+5. **Run in the background:** *Save Version* → **Save & Run All (Commit)**. You can
+   close the browser; training stops within the 10.5 h budget and keeps the best epoch.
+6. **Download:** open the finished version → *Output* → `india_model.zip`
+   (best weights, curves, `evaluation/evaluation.md` comparing it with the old model).
+7. **Promote on this PC:** unzip into `artifacts/runs/` so you have
+   `artifacts/runs/india_laptop/weights/best.pt`, then
+   `python scripts/training/evaluate.py --candidate artifacts/runs/india_laptop/weights/best.pt --device cpu --promote`
+   (≈15 min on CPU). Restart the app — it now uses the new model and thresholds.
+
+Kaggle gives a limited number of free GPU hours per week — check your quota on the
+notebook editor's right panel before starting. For the larger `best` model set
+`PROFILE = "best"` in the notebook's first code cell (needs ~2.5× the time; split
+across two sessions with `--resume`, or accept the 10.5 h budget's result).
+
 ## 0. Setup on the RTX 4060 laptop
 
 ```bat

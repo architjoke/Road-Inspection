@@ -67,6 +67,7 @@ Open http://127.0.0.1:5000. Live camera and GPS need HTTPS outside localhost
 | Inspect the database schema | `python scripts/admin/inspect_schema.py` |
 | Download + convert India training data | `python scripts/training/fetch_rdd2022_india.py` then `python -I scripts/training/convert_rdd_xml.py` |
 | Build training set / train / evaluate | `python scripts/training/build_dataset.py` · `train.py --profile laptop` · `evaluate.py --candidate … --promote` |
+| Package data + notebook for Kaggle's free GPU | `python scripts/training/package_kaggle.py` (steps: docs/ml/retraining.md) |
 
 ## Current status (2026-11-21)
 

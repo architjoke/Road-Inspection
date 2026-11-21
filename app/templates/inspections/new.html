@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}New Inspection{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inspection.css') }}">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Field data collection</p>
+        <h1>{% if gallery_mode %}Upload Road Photo{% else %}New Road Inspection{% endif %}</h1>
+        <p class="text-muted mb-0">
+            {% if gallery_mode %}
+            Choose a photo from your gallery. GPS can come from the browser, EXIF, or manual entry.
+            {% else %}
+            Capture with the live camera or upload a file. GPS can come from the browser, EXIF, or manual entry.
+            {% endif %}
+        </p>
+    </div>
+
+    {% if current_user.is_field_worker() and not current_user.is_municipal_admin() and not current_user.is_super_admin %}
+    <a class="btn btn-outline-primary" href="{{ url_for('inspections.my_inspections') }}">
+        <i class="fa-solid fa-list me-2"></i>
+        My Inspections
+    </a>
+    {% else %}
+    <a class="btn btn-outline-primary" href="{{ url_for('inspections.list_all') }}">
+        <i class="fa-solid fa-list me-2"></i>
+        Inspections
+    </a>
+    {% endif %}
+</div>
+
+<form id="inspection-form" method="POST" action="{{ url_for('inspections.new') }}{% if gallery_mode %}?mode=gallery{% endif %}" enctype="multipart/form-data"
+    novalidate x-data="inspectionUploadForm()" @submit="onSubmit($event)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="gps_manual_override" :value="manualOverride ? '1' : ''">
+    {% if gallery_mode %}<input type="hidden" name="gallery_mode" value="1">{% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div>
+                        <h2>Road Information</h2>
+                        <p>Describe the road location for this inspection.</p>
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    <div class="mb-3">
+                        <label for="location_name" class="form-label">
+                            Road / Street Address
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" id="location_name" name="location_name" class="form-control"
+                            placeholder="Auto-filled from GPS, or type a landmark" maxlength="255" required>
+                        <small class="text-muted">Capturing GPS fills the full street address automatically.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="weather_conditions" class="form-label">Weather Conditions</label>
+                        <select id="weather_conditions" name="weather_conditions" class="form-select">
+                            <option value="">Select weather (optional)</option>
+                            <option value="clear">Clear</option>
+                            <option value="cloudy">Cloudy</option>
+                            <option value="rainy">Rainy</option>
+                            <option value="foggy">Foggy</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="lighting_conditions" class="form-label">Lighting Conditions</label>
+                        <select id="lighting_conditions" name="lighting_conditions" class="form-select">
+                            <option value="">Select lighting (optional)</option>
+                            <option value="daylight">Daylight</option>
+                            <option value="low_light">Low light</option>
+                            <option value="night">Night</option>
+                            <option value="artificial_light">Artificial light</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-0">
+                        <label for="notes" class="form-label">Notes / Description</label>
+                        <textarea id="notes" name="notes" class="form-control" rows="4"
+                            placeholder="Example: Large pothole near the left lane."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-card mt-4">
+                <div class="content-card-header">
+                    <div>
+                        <h2>Road Image or Video</h2>
+                        <p>Allowed: JPG, JPEG, PNG, MP4, MOV. Images ≤ 50 MB, videos ≤ 500 MB.</p>
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    {% if not gallery_mode %}
+                    <div class="camera-capture-panel mb-4" id="camera-capture-panel">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Live camera capture</strong>
+                            <span class="small text-muted" id="camera-capture-status">Camera idle</span>
+                        </div>
+                        <video id="camera-preview" class="camera-preview" playsinline autoplay muted></video>
+                        <canvas id="camera-canvas" class="d-none"></canvas>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <button type="button" class="btn btn-outline-secondary" id="start-camera-button">
+                                <i class="fa-solid fa-video me-1"></i> Start camera
+                            </button>
+                            <button type="button" class="btn btn-primary" id="capture-image-button" disabled>
+                                <i class="fa-solid fa-camera me-1"></i> Capture Image
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="stop-camera-button" disabled>
+                                Stop
+                            </button>
+                            <a class="btn btn-outline-success d-none" id="open-map-after-capture" href="/map">
+                                Open map
+                            </a>
+                        </div>
+                        <p class="small text-muted mt-2 mb-0">
+                            Capture grabs a still frame, reads GPS, uploads for analysis, then plots on the map.
+                        </p>
+                    </div>
+                    {% endif %}
+
+                    <label for="media_file" class="upload-drop-zone" id="upload-drop-zone"
+                        :class="{ 'drag-over': dragging }"
+                        @dragenter.prevent="dragging = true"
+                        @dragover.prevent="dragging = true"
+                        @dragleave.prevent="dragging = false"
+                        @drop.prevent="onDrop($event)">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <span class="upload-title">Drag and drop a file here</span>
+                        <span class="upload-subtitle">or click to browse</span>
+                        <input type="file" id="media_file" name="media_file"
+                            accept=".jpg,.jpeg,.png,.mp4,.mov,image/jpeg,image/png,video/mp4,video/quicktime"
+                            required @change="onFileChange($event)">
+                    </label>
+
+                    <div id="selected-file-info" class="selected-file-info" x-show="fileName" x-cloak>
+                        <i class="fa-solid fa-file me-2"></i>
+                        <span x-text="fileName"></span>
+                        <span class="text-muted ms-2" x-text="fileSizeLabel"></span>
+                    </div>
+
+                    <div class="media-live-preview mt-3" x-show="previewUrl" x-cloak>
+                        <template x-if="previewKind === 'image'">
+                            <img :src="previewUrl" alt="Selected inspection media preview" class="inspection-image-preview">
+                        </template>
+                        <template x-if="previewKind === 'video'">
+                            <video :src="previewUrl" controls class="inspection-image-preview"></video>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div>
+                        <h2>GPS Location</h2>
+                        <p>Order of trust: map pin &rarr; GPS stored in the photo &rarr; browser location.</p>
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    <div class="gps-status-card" id="gps-status-card" :class="gpsCardClass">
+                        <div class="gps-status-icon">
+                            <i class="fa-solid fa-location-dot"></i>
+                        </div>
+                        <div>
+                            <strong id="gps-status-title" x-text="gpsTitle">Location not captured</strong>
+                            <p id="gps-status-message" x-text="gpsMessage">
+                                Click the button below and allow location permission.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-outline-primary w-100 mt-3" id="capture-location-button"
+                        @click="captureLocation()">
+                        <i class="fa-solid fa-location-crosshairs me-2"></i>
+                        Capture Current Location
+                    </button>
+
+                    <div class="gps-values mt-4">
+                        <div class="gps-value-row">
+                            <span>Latitude</span>
+                            <strong id="latitude-display" x-text="latDisplay">—</strong>
+                        </div>
+                        <div class="gps-value-row">
+                            <span>Longitude</span>
+                            <strong id="longitude-display" x-text="lngDisplay">—</strong>
+                        </div>
+                        <div class="gps-value-row">
+                            <span>GPS Accuracy</span>
+                            <strong id="accuracy-display" x-text="accDisplay">—</strong>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="location_latitude" name="location_latitude" x-model="latitude">
+                    <input type="hidden" id="location_longitude" name="location_longitude" x-model="longitude">
+                    <input type="hidden" id="gps_accuracy_meters" name="gps_accuracy_meters" x-model="accuracy">
+
+                    <div class="mt-4" x-show="showManual" x-cloak>
+                        <div class="alert alert-warning">
+                            <small>
+                                Click the exact damage spot on the map (drag the pin to adjust).
+                                On a PC, browser location is the office, not the road.
+                            </small>
+                        </div>
+                        <div id="gps-pick-map" class="mb-3" style="height: 280px; border-radius: 8px;"></div>
+                        <div class="mb-2">
+                            <label class="form-label" for="manual_lat">Manual latitude</label>
+                            <input type="text" id="manual_lat" name="manual_lat" class="form-control"
+                                placeholder="27.02380000" x-model="manualLat" @input="syncManual()">
+                        </div>
+                        <div>
+                            <label class="form-label" for="manual_lng">Manual longitude</label>
+                            <input type="text" id="manual_lng" name="manual_lng" class="form-control"
+                                placeholder="79.02150000" x-model="manualLng" @input="syncManual()">
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-link px-0 mt-2"
+                        @click="showManual ? (showManual = false) : openManual()">
+                        <span x-text="showManual ? 'Hide map' : 'Pin location on map'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="d-grid mt-4">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-inspection-button"
+                    :disabled="submitting">
+                    <span x-show="!submitting">
+                        <i class="fa-solid fa-paper-plane me-2"></i>
+                        Submit Inspection
+                    </span>
+                    <span x-show="submitting" x-cloak>
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        Uploading…
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/location_picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/geolocation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inspection_upload.js') }}"></script>
+{% if not gallery_mode %}
+<script src="{{ url_for('static', filename='js/camera_capture.js') }}"></script>
+{% endif %}
+{% endblock %}

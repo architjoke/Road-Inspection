@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">Boundaries</p>
+        <h1>{{ page_title }}</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('protected.wards') }}">Back</a>
+</div>
+
+<div class="content-card">
+    <form method="POST" class="p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="name">Ward name</label>
+                <input class="form-control" id="name" name="name" required value="{{ ward.name if ward else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="code">Code</label>
+                <input class="form-control" id="code" name="code" value="{{ (ward.code or '') if ward else '' }}">
+            </div>
+            {% if is_super %}
+            <div class="col-md-6">
+                <label class="form-label" for="municipality_id">Municipality</label>
+                <select class="form-select" id="municipality_id" name="municipality_id">
+                    {% for m in municipalities %}
+                    <option value="{{ m.id }}">{{ m.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-6">
+                <label class="form-label" for="administrator_name">Administrator</label>
+                <input class="form-control" id="administrator_name" name="administrator_name"
+                    value="{{ (ward.administrator_name or '') if ward else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="administrator_email">Admin email</label>
+                <input class="form-control" id="administrator_email" name="administrator_email" type="email"
+                    value="{{ (ward.administrator_email or '') if ward else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="administrator_phone">Admin phone</label>
+                <input class="form-control" id="administrator_phone" name="administrator_phone"
+                    value="{{ (ward.administrator_phone or '') if ward else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="population">Population</label>
+                <input class="form-control" id="population" name="population" type="number" min="0"
+                    value="{{ (ward.population or '') if ward else '' }}">
+            </div>
+        </div>
+
+        <h2 class="h5 mt-4">Ward boundary</h2>
+        <p class="text-muted small mb-2">
+            Inspections are assigned to a ward automatically when their GPS falls inside its boundary.
+            Click the map to add corner points (at least 3), or paste / upload GeoJSON from your
+            municipality's ward map. Saving also assigns this ward to existing inspections inside it.
+        </p>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="boundary-undo">Undo point</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="boundary-clear">Clear</button>
+            <label class="btn btn-sm btn-outline-primary mb-0">
+                Load .geojson file
+                <input type="file" id="boundary-file" accept=".geojson,.json,application/geo+json,application/json" hidden>
+            </label>
+            <span class="small text-muted align-self-center" id="boundary-status"></span>
+        </div>
+        <div id="boundary-map" style="height: 380px; border-radius: 8px;"></div>
+        <label class="form-label mt-3" for="boundary_geojson">Boundary GeoJSON (Polygon / MultiPolygon / Feature)</label>
+        <textarea class="form-control font-monospace small" id="boundary_geojson" name="boundary_geojson"
+            rows="4" placeholder='{"type": "Polygon", "coordinates": [[[74.24, 16.70], ...]]}'>{{ boundary_geojson }}</textarea>
+
+        <button class="btn btn-primary mt-4" type="submit">{{ "Save ward" if ward else "Create ward" }}</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/ward_boundary_editor.js') }}"></script>
+{% endblock %}

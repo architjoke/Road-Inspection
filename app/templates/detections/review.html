@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/detections.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="page-kicker">AI damage review</p>
+        <h1>{{ page_title }}</h1>
+        <p class="text-muted mb-0">
+            Live YOLO detections. Unassigned repair jobs are created automatically —
+            open a detection or Tasks &amp; Repairs to assign a contractor.
+        </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-primary" href="{{ url_for('protected.repairs') }}">
+            Repair tasks
+        </a>
+        <a class="btn btn-outline-primary" href="{{ url_for('dashboard.index') }}">
+            Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="content-card detection-review"
+     x-data="{
+        query: '',
+        severity: '',
+        reviewOnly: false,
+        rows: {{ detections | tojson }}
+     }">
+    <div class="p-3 border-bottom">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="det-search">Search</label>
+                <input id="det-search" type="search" class="form-control"
+                       placeholder="Class, action, inspection…" x-model="query">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="sev-filter">Severity</label>
+                <select id="sev-filter" class="form-select" x-model="severity">
+                    <option value="">All</option>
+                    <option value="SEVERE">SEVERE</option>
+                    <option value="MODERATE">MODERATE</option>
+                    <option value="MINOR">MINOR</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="review-only" x-model="reviewOnly">
+                    <label class="form-check-label" for="review-only">Manual review only</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-secondary w-100"
+                        @click="query=''; severity=''; reviewOnly=false">Clear</button>
+            </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0" x-text="'{{ note }}'"></p>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 detection-review-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Class</th>
+                    <th>Conf.</th>
+                    <th>Severity</th>
+                    <th>Priority</th>
+                    <th>Est. cost</th>
+                    <th>Action</th>
+                    <th>Repair</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="row in rows.filter(r => {
+                    const q = query.toLowerCase();
+                    const hay = ((r.damage_type||'') + ' ' + (r.class_name||'') + ' ' +
+                                 (r.recommended_action||'') + ' ' + (r.inspection_id||'')).toLowerCase();
+                    if (q && !hay.includes(q)) return false;
+                    if (severity && r.severity !== severity) return false;
+                    if (reviewOnly && !r.manual_review_required) return false;
+                    return true;
+                })" :key="row.detection_id">
+                    <tr>
+                        <td>
+                            <span x-text="row.detection_id"></span>
+                            <div class="small text-muted">ins <span x-text="row.inspection_id"></span></div>
+                        </td>
+                        <td x-text="row.damage_type || row.class_name || '—'"></td>
+                        <td x-text="row.confidence != null ? Number(row.confidence).toFixed(2) : '—'"></td>
+                        <td>
+                            <span class="sev-badge"
+                                  :class="'sev-' + (row.severity || 'unknown').toLowerCase()"
+                                  x-text="row.severity || '—'"></span>
+                        </td>
+                        <td x-text="row.priority ?? '—'"></td>
+                        <td x-text="row.estimated_cost != null ? '₹ ' + Math.round(Number(row.estimated_cost)).toLocaleString('en-IN') : '—'"></td>
+                        <td>
+                            <div x-text="row.recommended_action || '—'"></div>
+                        </td>
+                        <td>
+                            <template x-if="row.repair_id">
+                                <a class="btn btn-sm btn-outline-primary"
+                                   :href="'/repairs/' + row.repair_id"
+                                   x-text="'Job #' + row.repair_id"></a>
+                            </template>
+                            <template x-if="!row.repair_id">
+                                <a class="btn btn-sm btn-outline-secondary"
+                                   :href="'/detections/' + row.detection_id">Assign</a>
+                            </template>
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-primary"
+                               :href="'/detections/' + row.detection_id">Review / assign</a>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="p-4 empty-state" x-show="rows.length === 0">
+        <h2>No AI detections yet</h2>
+        <p>
+            Capture or upload a road photo as a field worker. YOLO runs automatically,
+            then detections and unassigned repair jobs appear here for assignment.
+        </p>
+        <a class="btn btn-primary mt-2" href="{{ url_for('inspections.list_all') }}">View inspections</a>
+    </div>
+</div>
+{% endblock %}

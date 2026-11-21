@@ -1,28 +1,33 @@
-# Root ignore — keep large data and local secrets out of git
+# Secrets and local environments
 .env
 **/.env
-.venv/
 venv/
+.venv/
+
+# Python / tooling caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors / OS
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db
 
-# Training data (multi-GB) — never commit
-data/**
-!data/README.md
-!data/**/.gitkeep
+# Runtime data (logs, uploads, reports, media cache) — keep only the folder skeleton
+instance/**
+!instance/**/
+!instance/**/.gitkeep
 
-# Runtime junk
-municipal_ai_system/app/instance/temp/
-municipal_ai_system/app/instance/logs/*.log
-municipal_ai_system/app/instance/logs/*.jsonl
-municipal_ai_system/app/instance/generated_reports/**
+# Datasets (multi-GB) — never commit; see docs/data.md
+data/
 
-# Local weight backups / export clutter
-municipal_ai_system/app/ai_models/best_*.pt
-municipal_ai_system/app/ai_models/*.zip
-municipal_ai_system/app/ai_models/INTEGRATE.txt
-municipal_ai_system/app/ai_models/_extract_best/
+# Model artifacts: only the promoted best.pt + best.model.json are tracked
+artifacts/runs/
+artifacts/backups/
+artifacts/ai_models/best_*.pt
+artifacts/ai_models/*.bak*
+artifacts/ai_models/*.zip

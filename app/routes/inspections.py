@@ -289,6 +289,10 @@ def detail(inspection_id: int):
         in {"processed", "completed", "done"}
     )
 
+    from app.ai.cost_engine import summarize_costs
+
+    cost_summary = summarize_costs(detections) if detections else None
+
     return render_template(
         "inspections/detail.html",
         inspection=inspection,
@@ -296,6 +300,7 @@ def detail(inspection_id: int):
         before_missing=not before_url,
         annotated_url=annotated_url,
         detections=detections,
+        cost_summary=cost_summary,
         linked_repairs=linked_repairs,
         analysis_done=analysis_done,
     )

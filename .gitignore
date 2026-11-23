@@ -1,34 +1,72 @@
 # Secrets and local environments
 .env
-**/.env
+.env.*
+!.env.example
+*.env
 venv/
 .venv/
+env/
+ENV/
 
 # Python / tooling caches
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
-# Editors / OS
+# Testing & Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# Editors, IDEs, and AI assistants
 .idea/
 .vscode/
-.DS_Store
-Thumbs.db
+.claude/
+.cursor/
+.windsurf/
+.gemini/
+.antigravity/
+*.swp
+*.swo
+*~
 
-# Runtime data (logs, uploads, reports, media cache) — keep only the folder skeleton
+# Operating Systems
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Runtime data (logs, uploads, reports, media cache) — keep folder skeletons with .gitkeep
 instance/**
 !instance/**/
 !instance/**/.gitkeep
+*.log
+scratch/
+tmp/
+temp/
 
 # Datasets (multi-GB) — never commit; see docs/data.md
 data/
 
-# Model artifacts: only the promoted best.pt + best.model.json are tracked
+# Model artifacts & training runs: only the active best.pt + best.model.json are tracked
 artifacts/runs/
 artifacts/kaggle/
 artifacts/backups/
-artifacts/ai_models/best_*.pt
+artifacts/ai_models/*backup*
+artifacts/ai_models/best_*_*.pt
 artifacts/ai_models/*.bak*
 artifacts/ai_models/*.zip

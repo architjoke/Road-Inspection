@@ -66,7 +66,9 @@
         <a class="btn btn-outline-secondary" href="/api/reports/{{ inspection.id }}/json">
             Download JSON
         </a>
+        {% if current_user.dashboard_role_key in ('super_admin', 'municipal_admin', 'field_officer', 'viewer') %}
         <a class="btn btn-link" href="{{ url_for('protected.reports') }}">Reports dashboard</a>
+        {% endif %}
     </div>
 </div>
 {% endif %}
@@ -297,7 +299,10 @@
                     </div>
                     <div>
                         <dt>Estimated Repair Cost</dt>
-                        <dd>{% if inspection.estimated_total_cost is not none %}&#8377; {{ "{:,.0f}".format(inspection.estimated_total_cost|float) }}{% else %}—{% endif %}</dd>
+                        <dd>{% if inspection.estimated_total_cost is not none %}&#8377; {{ "{:,.0f}".format(inspection.estimated_total_cost|float) }}{% if cost_rates_are_placeholder() %}<span class="small text-muted" title="Placeholder unit rates — set repair_cost_rates in System Settings for municipal rates"> (indicative)</span>{% endif %}{% else %}—{% endif %}
+                        {% if cost_summary and cost_summary.pending_review_count %}
+                        <div class="small text-muted">Excludes {{ cost_summary.pending_review_count }} low-confidence detection{{ "s" if cost_summary.pending_review_count != 1 }} awaiting review (&#8377; {{ "{:,.0f}".format(cost_summary.pending_review_items_total) }}); approved ones are added.</div>
+                        {% endif %}</dd>
                     </div>
                 </dl>
             </div>

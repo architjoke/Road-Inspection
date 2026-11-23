@@ -72,7 +72,7 @@
                     <th>Conf.</th>
                     <th>Severity</th>
                     <th>Priority</th>
-                    <th>Est. cost</th>
+                    <th>Est. cost{% if cost_rates_are_placeholder() %} <span class="small text-muted fw-normal" title="Placeholder unit rates — set repair_cost_rates in System Settings for municipal rates">(indicative)</span>{% endif %}</th>
                     <th>Action</th>
                     <th>Repair</th>
                     <th></th>

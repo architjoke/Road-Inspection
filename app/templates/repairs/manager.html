@@ -126,11 +126,44 @@
                 :disabled="!(beforeFile || beforeUrl) || !(afterFile || afterUrl) || comparing">
                 <span x-text="comparing ? 'Comparing…' : 'Run SSIM Verification'"></span>
             </button>
-            <button type="button" class="btn btn-outline-secondary" @click="markVerifiedManual()"
-                :disabled="!repairId">
-                Mark repair verified
-            </button>
         </div>
+
+        <div class="mt-4" x-show="recommendation" x-cloak>
+            <div class="alert mb-0" :class="recommendation === 'verify' ? 'alert-success' : 'alert-warning'">
+                <strong>SSIM recommendation:</strong>
+                <span x-text="recommendation === 'verify'
+                    ? 'repair looks complete — verify'
+                    : 'needs a closer look before verifying'"></span>
+                <span class="small d-block">This is advice only. The repair is verified only by an admin's decision below.</span>
+            </div>
+        </div>
+
+        <template x-if="repairId && repairStatus === 'verified'">
+            <div class="alert alert-info mt-3 mb-0">
+                Repair #<span x-text="repairId"></span> is verified
+                <span x-show="decision?.decided_by_name" x-text="' by ' + (decision?.decided_by_name || '')"></span><span x-show="decision?.decided_at" x-text="' on ' + (decision?.decided_at || '').slice(0, 16).replace('T', ' ')"></span>.
+            </div>
+        </template>
+
+        {% if repair_id %}
+        <div class="content-card mt-3 p-3" x-show="repairStatus !== 'verified'">
+            <h3 class="h6 mb-2">Final decision</h3>
+            {% if can_final_verify %}
+            <p class="small text-muted mb-2" x-show="!recommendation">Run SSIM verification first — the decision needs the before/after comparison.</p>
+            <label class="form-label small" for="decision-note">
+                Reason / note <span x-show="recommendation && recommendation !== 'verify'">(required: SSIM did not recommend verification)</span>
+            </label>
+            <textarea id="decision-note" class="form-control form-control-sm mb-2" rows="2" x-model="decisionNote"
+                placeholder="e.g. Checked on site; whole carriageway resurfaced"></textarea>
+            <button type="button" class="btn btn-success" @click="markVerifiedManual()"
+                :disabled="!recommendation || deciding || (recommendation !== 'verify' && decisionNote.trim().length < 10)">
+                <span x-text="deciding ? 'Saving…' : 'Mark repair verified'"></span>
+            </button>
+            {% else %}
+            <p class="small text-muted mb-0">The final verification is made by a municipal or super admin after reviewing this SSIM result.</p>
+            {% endif %}
+        </div>
+        {% endif %}
 
         <div class="mt-4" x-show="result" x-cloak>
             <h3 class="h6">Verification result</h3>
@@ -154,19 +187,36 @@
                         </template>
                     </ul>
                 </dd>
+                <template x-if="result?.damage_areas?.length">
+                    <dt class="col-sm-4">Damage areas checked</dt>
+                </template>
+                <template x-if="result?.damage_areas?.length">
+                    <dd class="col-sm-8">
+                        <ul class="mb-0 ps-3">
+                            <template x-for="area in result.damage_areas" :key="area.bbox.join(',')">
+                                <li>
+                                    <span x-text="area.label"></span>:
+                                    <strong x-text="area.status.split(' -')[0]"></strong>
+                                    <span class="text-muted" x-text="area.required ? '' : ' (lower confidence, not required)'"></span>
+                                </li>
+                            </template>
+                        </ul>
+                    </dd>
+                </template>
+                <dt class="col-sm-4">Notes</dt>
+                <dd class="col-sm-8" x-text="(result?.notes || []).join('; ') || '—'"></dd>
                 <dt class="col-sm-4">Alignment</dt>
                 <dd class="col-sm-8" x-text="(result?.alignment_method || '—') + (result?.alignment_success ? ' (ok)' : ' (fallback)')"></dd>
                 <dt class="col-sm-4">Repair linked</dt>
-                <dd class="col-sm-8" x-text="result?.repair_status || (repairId ? ('#' + repairId) : '—')"></dd>
+                <dd class="col-sm-8" x-text="repairId ? ('#' + repairId + ' — awaiting admin decision') : '—'"></dd>
             </dl>
         </div>
 
         <p class="text-muted small mt-3 mb-0">
-            Same-road gate runs first (ORB feature match); unrelated roads return an error.
-            SSIM is measured only where both photos overlap, after lighting correction, on the
-            detected damage box. A repair is auto-verified only when the damage area changed
-            clearly more than the road around it and nothing needs review; otherwise a person
-            confirms it.
+            Same-road gate runs first (SIFT feature match, tolerant to a different camera angle);
+            unrelated roads return an error. SSIM is measured only where both photos overlap,
+            after lighting correction, on the detected damage box. SSIM recommends; the repair is
+            verified only when a municipal or super admin makes the final decision.
         </p>
     </div>
 </div>
@@ -186,6 +236,11 @@
             beforeError: {{ (before_error or '')|tojson }},
             inspectionId: {{ (inspection_id or none)|tojson }},
             repairId: {{ (repair_id or none)|tojson }},
+            repairStatus: {{ ((repair or {}).get('status') or '')|tojson }},
+            recommendation: {{ (saved_recommendation or none)|tojson }},
+            decision: {{ ((saved_verification or {}).get('final_decision') or none)|tojson }},
+            decisionNote: '',
+            deciding: false,
             init() {
                 const params = new URLSearchParams(window.location.search);
                 const id = params.get('inspection_id') || this.inspectionId;
@@ -276,9 +331,10 @@
                         return;
                     }
                     this.result = data;
+                    this.recommendation = data.ssim_recommendation || null;
                     const level = data.manual_review_required ? 'warning' : 'success';
-                    const linkedMsg = data.repair_status ? ' Repair marked verified.' : '';
-                    window.RoadInspectionUI?.toast((data.status || 'Verification complete.') + linkedMsg, level);
+                    const next = this.repairId ? ' An admin makes the final decision.' : '';
+                    window.RoadInspectionUI?.toast((data.status || 'Verification complete.') + next, level);
                 } catch (err) {
                     window.RoadInspectionUI?.toast('Verification request failed.', 'danger');
                 } finally {
@@ -286,8 +342,13 @@
                 }
             },
             async markVerifiedManual() {
-                if (!this.repairId) return;
-                if (!window.confirm('Mark repair #' + this.repairId + ' as verified without re-running SSIM?')) return;
+                if (!this.repairId || !this.recommendation) return;
+                const against = this.recommendation !== 'verify';
+                const prompt = against
+                    ? 'SSIM did not recommend verification. Verify repair #' + this.repairId + ' anyway with your reason?'
+                    : 'Confirm repair #' + this.repairId + ' as verified? Payment becomes pending.';
+                if (!window.confirm(prompt)) return;
+                this.deciding = true;
                 try {
                     const response = await fetch('/api/repairs/' + this.repairId + '/mark-verified', {
                         method: 'POST',
@@ -296,7 +357,7 @@
                             'Content-Type': 'application/json',
                             'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
                         },
-                        body: JSON.stringify({}),
+                        body: JSON.stringify({ note: this.decisionNote }),
                     });
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok) {
@@ -307,6 +368,8 @@
                     window.location.href = '/repairs/' + this.repairId;
                 } catch (err) {
                     window.RoadInspectionUI?.toast('Could not mark verified.', 'danger');
+                } finally {
+                    this.deciding = false;
                 }
             }
         };

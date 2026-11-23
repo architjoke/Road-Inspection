@@ -202,6 +202,6 @@ class Config:
 
     RATELIMIT_ENABLED = _env_bool("RATELIMIT_ENABLED", "true")
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
-    RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "100 per hour;20 per minute")
+    RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "2000 per hour;200 per minute")
     SECURITY_HEADERS_ENABLED = _env_bool("SECURITY_HEADERS_ENABLED", "true")
     OFFLINE_MODE = _env_bool("OFFLINE_MODE")

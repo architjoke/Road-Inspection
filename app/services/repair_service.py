@@ -161,7 +161,7 @@ def update_repair(repair_id: int, **fields) -> dict[str, Any] | None:
         if row is None:
             return None
         for key, value in fields.items():
-            if value is not None or key in {"evidence_note", "comparison_id", "assignee_id"}:
+            if value is not None or key in {"evidence_note", "comparison_id", "assignee_id", "verification"}:
                 row[key] = value
         if "assignee_id" in fields:
             aid = fields.get("assignee_id")

@@ -109,6 +109,47 @@ def _persist_review(
         return False
 
 
+def refresh_inspection_cost_total(inspection_id: int | None) -> float | None:
+    """Re-price an inspection from its detections after a review decision.
+
+    Approving a low-confidence detection brings its cost into the total; rejecting
+    a false positive takes it out (see ``cost_engine.summarize_costs``).
+    """
+    if inspection_id is None:
+        return None
+    try:
+        from app.ai.cost_engine import summarize_costs
+        from app.services.detection_service import list_detections_merged
+        from app.services.offline_store import offline_mode_enabled, offline_store
+
+        total = summarize_costs(list_detections_merged(inspection_id=int(inspection_id)))["total"]
+        if offline_mode_enabled():
+            offline_store.update_inspection(int(inspection_id), estimated_total_cost=total)
+        elif _db_enabled():
+            from sqlalchemy import text
+
+            from app.extensions import db
+
+            db.session.execute(
+                text(
+                    "UPDATE inspections SET estimated_total_cost = :total, updated_at = :at "
+                    "WHERE inspection_id = :id"
+                ),
+                {"total": total, "at": datetime.utcnow(), "id": int(inspection_id)},
+            )
+            db.session.commit()
+        return total
+    except Exception:
+        logger.exception("Could not refresh cost total for inspection %s", inspection_id)
+        try:
+            from app.extensions import db
+
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+
 def review_detection(
     detection_id: int,
     *,
@@ -135,4 +176,6 @@ def review_detection(
         from app.services.detection_review_service import get_detection_for_review
 
         updated = get_detection_for_review(detection_id)
+    if updated is not None:
+        refresh_inspection_cost_total(updated.get("inspection_id"))
     return updated

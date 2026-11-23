@@ -28,17 +28,45 @@ RULE_VERSION = "phase12-v3-roi"
 # Phone photos are 12+ MP; SSIM/ORB at full size is slow and memory-hungry on a PC
 # and adds no accuracy for a pothole-sized region.
 MAX_SIDE_PX = 1280
-# Pixels of the before frame that the warped after photo must cover.
+# Pixels of the before frame that the warped after photo must cover for a
+# whole-photo comparison. With a damage box, what matters is the box itself:
+# stepping closer legitimately covers less of the before view.
 MIN_OVERLAP = 0.6
+MIN_ALIGN_OVERLAP = 0.35   # below this the fit is not trusted at all
+MIN_ROI_COVERAGE = 0.8     # share of the damage box the after photo must show
 # Damage region must change this much more than its surroundings (SSIM points)
 # before a repair can be auto-verified; lighting/time-of-day changes hit both.
 MIN_ROI_CONTEXT_DROP = 0.15
 PARTIAL_ROI_CONTEXT_DROP = 0.08
+# Lighting / exposure changes survive lighting normalisation with moderate SSIM;
+# near-zero SSIM means the surface itself was replaced. When the damage area AND
+# its surrounding road are both replaced, the road was resurfaced: the ring is no
+# longer an unchanged reference, so the relative-drop guard does not apply.
+STRONG_CHANGE_SSIM = 0.25
+RESURFACED_CONTEXT_SSIM = 0.35
 
 # Same-scene gate: different roads usually fail ORB matching hard.
 MIN_SAME_SCENE_MATCHES = 12
 MIN_SAME_SCENE_INLIER_RATIO = 0.12
 MIN_HISTOGRAM_CORR = 0.35
+
+# Same-spot fallback: repeat photos from (almost) the same position, where ORB fails
+# because the repair removed the road texture (e.g. full resurfacing) and the few
+# matches sit on trees/sky. Accept a direct ECC alignment only if it correlates
+# well and stays close to identity; photos of different roads do not converge.
+ECC_MIN_CORRELATION = 0.30
+ECC_MAX_SCALE_DELTA = 0.25   # |scale - 1|
+ECC_MAX_SHEAR = 0.15         # off-diagonal terms of the affine matrix
+ECC_MAX_SHIFT_FRAC = 0.20    # translation as a fraction of the frame size
+
+# A homography that folds, flips or wildly rescales the frame is a bad fit (often a
+# few matches on distant trees), not a different camera angle.
+MAX_WARP_AREA_RATIO = 4.0
+# Model selection: keep the 8-dof homography only when it explains clearly more
+# matches than a 6-dof affine fit. Matches often cluster in one part of the frame
+# (trees, buildings); perspective terms fitted there extrapolate badly to the road
+# near the camera, while an affine fit stays well-behaved.
+HOMOGRAPHY_MIN_GAIN = 1.10
 
 
 class VerificationError(Exception):
@@ -49,11 +77,12 @@ class VerificationError(Exception):
 class AlignmentResult:
     aligned_after: np.ndarray
     homography: np.ndarray | None
-    method: str  # "orb_homography" | "resize_fallback"
+    method: str  # "sift_homography[+ecc]" | "orb_homography[+ecc]" | "ecc_same_viewpoint" | "resize_fallback"
     inlier_ratio: float
     match_count: int
     success: bool
     valid_mask: np.ndarray | None = None  # pixels the after photo actually covers
+    ecc_correlation: float | None = None  # set by the same-viewpoint fallback
 
 
 def _read_bgr(path: str | Path, max_side: int | None = None) -> tuple[np.ndarray, float]:
@@ -138,6 +167,143 @@ def compute_ssim(
     return max(-1.0, min(1.0, score))
 
 
+def _ecc_same_viewpoint(
+    before_bgr: np.ndarray, after_bgr: np.ndarray, match_count: int
+) -> AlignmentResult | None:
+    """Direct (ECC affine) alignment from identity for photos taken from the same spot."""
+    h, w = before_bgr.shape[:2]
+    resized = cv2.resize(after_bgr, (w, h), interpolation=cv2.INTER_AREA)
+    gb = cv2.GaussianBlur(_normalize_lighting(_to_gray(before_bgr)), (5, 5), 0).astype(np.float32)
+    ga = cv2.GaussianBlur(_normalize_lighting(_to_gray(resized)), (5, 5), 0).astype(np.float32)
+    warp = np.eye(2, 3, dtype=np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 200, 1e-6)
+    try:
+        cc, warp = cv2.findTransformECC(gb, ga, warp, cv2.MOTION_AFFINE, criteria, None, 5)
+    except cv2.error:
+        return None
+    a, b, tx = float(warp[0, 0]), float(warp[0, 1]), float(warp[0, 2])
+    c, d, ty = float(warp[1, 0]), float(warp[1, 1]), float(warp[1, 2])
+    near_identity = (
+        abs(a - 1) <= ECC_MAX_SCALE_DELTA
+        and abs(d - 1) <= ECC_MAX_SCALE_DELTA
+        and abs(b) <= ECC_MAX_SHEAR
+        and abs(c) <= ECC_MAX_SHEAR
+        and abs(tx) <= ECC_MAX_SHIFT_FRAC * w
+        and abs(ty) <= ECC_MAX_SHIFT_FRAC * h
+    )
+    if cc < ECC_MIN_CORRELATION or not near_identity:
+        return None
+    flags = cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
+    aligned = cv2.warpAffine(resized, warp, (w, h), flags=flags)
+    coverage = cv2.warpAffine(
+        np.full((h, w), 255, np.uint8), warp, (w, h), flags=cv2.INTER_NEAREST + cv2.WARP_INVERSE_MAP
+    )
+    coverage = cv2.erode(coverage, np.ones((11, 11), np.uint8))
+    homography = np.vstack([cv2.invertAffineTransform(warp), [0.0, 0.0, 1.0]])
+    return AlignmentResult(
+        aligned_after=aligned,
+        homography=homography,
+        method="ecc_same_viewpoint",
+        inlier_ratio=0.0,
+        match_count=match_count,
+        success=True,
+        valid_mask=coverage > 0,
+        ecc_correlation=round(float(cc), 4),
+    )
+
+
+def _homography_is_sane(homography: np.ndarray, after_shape: tuple[int, ...], before_shape: tuple[int, ...]) -> bool:
+    """Reject folded / mirrored / degenerate fits; real angle changes keep a convex, same-orientation quad."""
+    ah, aw = after_shape[:2]
+    bh, bw = before_shape[:2]
+    corners = np.float32([[0, 0], [aw, 0], [aw, ah], [0, ah]]).reshape(-1, 1, 2)
+    try:
+        quad = cv2.perspectiveTransform(corners, homography).reshape(-1, 2)
+    except cv2.error:
+        return False
+    if not np.all(np.isfinite(quad)) or not cv2.isContourConvex(quad.astype(np.float32)):
+        return False
+    signed = 0.5 * float(np.sum(quad[:, 0] * np.roll(quad[:, 1], -1) - np.roll(quad[:, 0], -1) * quad[:, 1]))
+    if signed <= 0:  # mirrored
+        return False
+    ratio = signed / float(bw * bh)
+    return 1.0 / MAX_WARP_AREA_RATIO <= ratio <= MAX_WARP_AREA_RATIO
+
+
+ECC_REFINE_MAX_SIDE = 640
+
+
+def _scale_matrix(factor: float) -> np.ndarray:
+    return np.diag([factor, factor, 1.0])
+
+
+def _refine_homography_ecc(
+    before_bgr: np.ndarray, after_bgr: np.ndarray, result: AlignmentResult
+) -> AlignmentResult:
+    """
+    Polish a feature homography with dense ECC over the whole frame.
+
+    Feature matches cluster where texture survives (often trees or buildings far
+    away); a homography fitted there extrapolates poorly to the road near the
+    camera. ECC uses every pixel (kerbs, markings, verge, scenery) and starts from
+    the feature fit, so it converges to the same scene - never to a different one.
+    Kept only if it correlates better and stays sane.
+    """
+    if result.homography is None:
+        return result
+    bh, bw = before_bgr.shape[:2]
+    ah, aw = after_bgr.shape[:2]
+    sb = min(1.0, ECC_REFINE_MAX_SIDE / max(bh, bw))
+    sa = min(1.0, ECC_REFINE_MAX_SIDE / max(ah, aw))
+
+    def prep(img, f):
+        small = cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_AREA) if f < 1 else img
+        return cv2.GaussianBlur(_normalize_lighting(_to_gray(small)), (5, 5), 0).astype(np.float32)
+
+    tb, ta = prep(before_bgr, sb), prep(after_bgr, sa)
+    # ECC warp maps before (template) pixels -> after (input) pixels.
+    init = (_scale_matrix(sa) @ np.linalg.inv(result.homography) @ np.linalg.inv(_scale_matrix(sb)))
+    init = (init / init[2, 2]).astype(np.float32)
+    size = (tb.shape[1], tb.shape[0])
+    flags = cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
+    try:
+        start_cc = cv2.computeECC(tb, cv2.warpPerspective(ta, init, size, flags=flags))
+        criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 150, 1e-6)
+        cc, warp = cv2.findTransformECC(tb, ta, init.copy(), cv2.MOTION_HOMOGRAPHY, criteria, None, 5)
+    except cv2.error:
+        return result
+    if cc <= start_cc:
+        return result
+    refined_inv = np.linalg.inv(_scale_matrix(sa)) @ warp.astype(np.float64) @ _scale_matrix(sb)
+    homography = np.linalg.inv(refined_inv)
+    homography /= homography[2, 2]
+    if not _homography_is_sane(homography, after_bgr.shape, before_bgr.shape):
+        return result
+    warped = cv2.warpPerspective(after_bgr, homography, (bw, bh))
+    coverage = cv2.warpPerspective(
+        np.full((ah, aw), 255, np.uint8), homography, (bw, bh), flags=cv2.INTER_NEAREST
+    )
+    coverage = cv2.erode(coverage, np.ones((11, 11), np.uint8))
+    return AlignmentResult(
+        aligned_after=warped,
+        homography=homography,
+        method=result.method + "+ecc",
+        inlier_ratio=result.inlier_ratio,
+        match_count=result.match_count,
+        success=result.success,
+        valid_mask=coverage > 0,
+        ecc_correlation=round(float(cc), 4),
+    )
+
+
+def _is_good(result: AlignmentResult) -> bool:
+    return (
+        result.success
+        and result.valid_mask is not None
+        and float(result.valid_mask.mean()) >= MIN_ALIGN_OVERLAP
+    )
+
+
 def align_images(
     before_bgr: np.ndarray,
     after_bgr: np.ndarray,
@@ -147,7 +313,44 @@ def align_images(
     ransac_reproj: float = 5.0,
 ) -> AlignmentResult:
     """
-    Align `after` into `before` coordinate space via ORB + homography (RANSAC).
+    Register the after photo onto the before photo, tolerating a different angle.
+
+    1. SIFT + MAGSAC++ homography (scale/rotation invariant: phone held higher,
+       closer, rotated or tilted; works off kerbs, markings, trees, buildings)
+    2. ORB + RANSAC homography (previous method)
+    3. Same-viewpoint ECC fit (repair removed the road texture both rely on)
+    The first good fit wins; otherwise the best partial result is returned so the
+    same-scene gate can reject it.
+    """
+    candidates: list[AlignmentResult] = []
+    for method in ("sift", "orb"):
+        result = _align_features(
+            before_bgr, after_bgr, method=method,
+            max_features=max_features, min_matches=min_matches, ransac_reproj=ransac_reproj,
+        )
+        if _is_good(result):
+            return _refine_homography_ecc(before_bgr, after_bgr, result)
+        candidates.append(result)
+    best_matches = max(c.match_count for c in candidates)
+    fallback = _ecc_same_viewpoint(before_bgr, after_bgr, best_matches)
+    if fallback is not None:
+        return fallback
+    # Prefer a sane homography over a resize fallback for the gate / review reasons.
+    candidates.sort(key=lambda c: (c.success, c.homography is not None, c.match_count), reverse=True)
+    return candidates[0]
+
+
+def _align_features(
+    before_bgr: np.ndarray,
+    after_bgr: np.ndarray,
+    *,
+    method: str = "orb",
+    max_features: int = 2000,
+    min_matches: int = 12,
+    ransac_reproj: float = 5.0,
+) -> AlignmentResult:
+    """
+    Align `after` into `before` coordinate space via SIFT or ORB + homography.
 
     Falls back to resize if matching fails.
     """
@@ -155,9 +358,14 @@ def align_images(
     before_gray = _normalize_lighting(_to_gray(before_bgr))
     after_gray = _normalize_lighting(_to_gray(after_bgr))
 
-    orb = cv2.ORB_create(nfeatures=max_features)
-    kp1, des1 = orb.detectAndCompute(before_gray, None)
-    kp2, des2 = orb.detectAndCompute(after_gray, None)
+    if method == "sift":
+        detector = cv2.SIFT_create(nfeatures=max_features * 2)
+        norm, label, robust = cv2.NORM_L2, "sift_homography", getattr(cv2, "USAC_MAGSAC", cv2.RANSAC)
+    else:
+        detector = cv2.ORB_create(nfeatures=max_features)
+        norm, label, robust = cv2.NORM_HAMMING, "orb_homography", cv2.RANSAC
+    kp1, des1 = detector.detectAndCompute(before_gray, None)
+    kp2, des2 = detector.detectAndCompute(after_gray, None)
 
     if des1 is None or des2 is None or len(kp1) < 4 or len(kp2) < 4:
         resized = cv2.resize(after_bgr, (w, h), interpolation=cv2.INTER_AREA)
@@ -170,7 +378,7 @@ def align_images(
             success=False,
         )
 
-    matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matcher = cv2.BFMatcher(norm, crossCheck=False)
     knn = matcher.knnMatch(des1, des2, k=2)
     good = []
     for pair in knn:
@@ -195,7 +403,18 @@ def align_images(
     dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
     # Map after → before: use dst (after) as source for warpPerspective into before frame
-    homography, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, ransac_reproj)
+    homography, mask = cv2.findHomography(dst_pts, src_pts, robust, ransac_reproj)
+    if homography is not None:
+        affine, affine_mask = cv2.estimateAffine2D(
+            dst_pts, src_pts, method=cv2.RANSAC, ransacReprojThreshold=ransac_reproj
+        )
+        h_inliers = int(mask.sum()) if mask is not None else 0
+        a_inliers = int(affine_mask.sum()) if affine_mask is not None else 0
+        if affine is not None and h_inliers < HOMOGRAPHY_MIN_GAIN * a_inliers:
+            homography, mask = np.vstack([affine, [0.0, 0.0, 1.0]]), affine_mask
+            label = label.replace("homography", "affine")
+    if homography is not None and not _homography_is_sane(homography, after_bgr.shape, before_bgr.shape):
+        homography = None
     if homography is None:
         resized = cv2.resize(after_bgr, (w, h), interpolation=cv2.INTER_AREA)
         return AlignmentResult(
@@ -219,7 +438,7 @@ def align_images(
     return AlignmentResult(
         aligned_after=warped,
         homography=homography,
-        method="orb_homography",
+        method=label,
         inlier_ratio=round(inlier_ratio, 4),
         match_count=len(good),
         success=inlier_ratio >= 0.15 and inliers >= min_matches // 2,
@@ -325,6 +544,18 @@ def assert_same_road_scene(
         alignment.success
         and alignment.match_count >= MIN_SAME_SCENE_MATCHES
         and alignment.inlier_ratio >= MIN_SAME_SCENE_INLIER_RATIO
+    ):
+        return
+
+    # Same-viewpoint ECC fit (repair removed the road texture ORB relies on): the
+    # direct fit itself is the strong evidence, backed by a few ORB matches and a
+    # similar overall appearance.
+    if (
+        alignment.method == "ecc_same_viewpoint"
+        and alignment.success
+        and (alignment.ecc_correlation or 0.0) >= ECC_MIN_CORRELATION
+        and alignment.match_count >= MIN_SAME_SCENE_MATCHES // 2
+        and hist_corr >= MIN_HISTOGRAM_CORR
     ):
         return
 
@@ -440,7 +671,7 @@ def compare_before_after(
         valid = np.ones((h, w), bool)
         review_reasons.append("photos could not be aligned")
     overlap = float(valid.mean())
-    if overlap < MIN_OVERLAP:
+    if overlap < (MIN_OVERLAP if roi is None else MIN_ALIGN_OVERLAP):
         review_reasons.append(f"after photo covers only {overlap:.0%} of the before view")
 
     before_n = _normalize_lighting(_to_gray(before))
@@ -451,6 +682,9 @@ def compare_before_after(
 
     roi_scaled = None
     roi_ssim = context_ssim = context_drop = None
+    fine_align_failed = False
+    roi_coverage = 0.0
+    notes: list[str] = []
     if roi is not None:
         roi_scaled = tuple(int(round(v * scale)) for v in roi)
         masks = _roi_and_context(roi_scaled, (h, w))
@@ -458,16 +692,18 @@ def compare_before_after(
             roi_scaled = None
         else:
             roi_mask, ring = masks
-            if (roi_mask & valid).sum() < 0.5 * roi_mask.sum():
-                review_reasons.append("damage area is outside the after photo")
+            roi_coverage = float((roi_mask & valid).sum()) / float(roi_mask.sum())
+            if roi_coverage < MIN_ROI_COVERAGE:
+                review_reasons.append(
+                    f"after photo shows only {roi_coverage:.0%} of the damage area"
+                )
             ys, xs = np.nonzero(roi_mask | ring)
             window = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
             wx1, wy1, wx2, wy2 = window
             after_w, valid_w, converged = _refine_local(
                 before_n, after_n, valid, window, align_mask=ring
             )
-            if not converged:
-                review_reasons.append("could not fine-align the damage area")
+            fine_align_failed = not converged
             before_w = before_n[wy1:wy2, wx1:wx2]
             roi_w, ring_w = roi_mask[wy1:wy2, wx1:wx2], ring[wy1:wy2, wx1:wx2]
             roi_ssim = compute_ssim(before_w, after_w, roi_w & valid_w)
@@ -487,8 +723,19 @@ def compare_before_after(
             partial_max=partial_max,
             alignment_success=alignment.success,
         )
+        resurfaced = (
+            alignment.success
+            and roi_coverage >= MIN_ROI_COVERAGE
+            and roi_ssim < STRONG_CHANGE_SSIM
+            and context_ssim is not None
+            and context_ssim < RESURFACED_CONTEXT_SSIM
+        )
+        if resurfaced:
+            notes.append("surrounding road was resurfaced too; compared against the original surface")
+        elif fine_align_failed:
+            review_reasons.append("could not fine-align the damage area")
         # The repaired spot must change clearly more than the road around it.
-        if context_drop is not None and decision["status"] == STATUS_VERIFIED:
+        if context_drop is not None and decision["status"] == STATUS_VERIFIED and not resurfaced:
             if context_drop < PARTIAL_ROI_CONTEXT_DROP:
                 decision["status"] = STATUS_NO_CHANGE
                 decision["manual_review_required"] = True
@@ -545,6 +792,7 @@ def compare_before_after(
         "context_ssim": round(float(context_ssim), 6) if context_ssim is not None else None,
         "roi_change_vs_context": round(float(context_drop), 6) if context_drop is not None else None,
         "overlap_ratio": round(overlap, 4),
+        "roi_coverage": round(roi_coverage, 4) if roi_scaled is not None else None,
         "mean_absolute_diff": round(
             float(mean_absolute_diff(before_n * valid, after_n * valid)), 6
         ),
@@ -552,17 +800,20 @@ def compare_before_after(
         "completion_percentage": decision["completion_percentage"],
         "manual_review_required": manual_review,
         "review_reasons": review_reasons,
+        "notes": notes,
         "alignment": {
             "method": alignment.method,
             "success": alignment.success,
             "match_count": alignment.match_count,
             "inlier_ratio": alignment.inlier_ratio,
             "homography_available": alignment.homography is not None,
+            "ecc_correlation": alignment.ecc_correlation,
         },
         "thresholds": {
             **decision["thresholds"],
             "min_roi_context_drop": MIN_ROI_CONTEXT_DROP,
             "min_overlap": MIN_OVERLAP,
+            "min_roi_coverage": MIN_ROI_COVERAGE,
         },
         "roi": list(roi) if roi else None,
         "working_scale": round(scale, 4),

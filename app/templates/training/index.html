@@ -7,7 +7,7 @@
     <div>
         <p class="page-kicker">Super Admin</p>
         <h1>Model training preview</h1>
-        <p class="text-muted mb-0">Run YOLOv8 on a road photo and review bounding boxes with class labels. Uses ImageKit-free local processing.</p>
+        <p class="text-muted mb-0">Run the live damage detector on a road photo and review its boxes and class labels. Runs locally; nothing is uploaded or saved to inspections.</p>
     </div>
 </div>
 
@@ -21,13 +21,41 @@
                 <button class="btn btn-primary mt-3" type="submit">Detect damages</button>
             </form>
         </div>
+        <div class="content-card mt-4">
+            <div class="content-card-header"><div><h2>Active model</h2><p>Used by inspections, repair checks and this preview</p></div></div>
+            <div class="p-4">
+                {% if model.mock %}
+                <p class="text-warning mb-0">Mock detector is on (YOLO_FORCE_MOCK=true) — results are placeholders.</p>
+                {% elif not model.exists %}
+                <p class="text-danger mb-0">No model file at <code>artifacts/ai_models/{{ model.file }}</code>.</p>
+                {% else %}
+                <dl class="row small mb-0">
+                    <dt class="col-6">Model</dt><dd class="col-6">{{ model.architecture or model.file }}</dd>
+                    <dt class="col-6">Image size</dt><dd class="col-6">{{ model.imgsz }} px</dd>
+                    {% if model.promoted_at %}<dt class="col-6">Promoted</dt><dd class="col-6">{{ model.promoted_at }}</dd>{% endif %}
+                    {% if model.map50 is not none %}
+                    <dt class="col-6">India val mAP50</dt><dd class="col-6">{{ "%.3f"|format(model.map50) }}</dd>
+                    <dt class="col-6">Precision / recall</dt><dd class="col-6">{{ "%.2f"|format(model.precision) }} / {{ "%.2f"|format(model.recall) }}</dd>
+                    {% endif %}
+                </dl>
+                {% if model.thresholds %}
+                <p class="small text-muted mt-3 mb-1">Minimum confidence per class{% if model.threshold_method %} · tuned {{ model.threshold_method }}{% endif %}</p>
+                <dl class="row small mb-0">
+                    {% for name, conf in model.thresholds.items() %}
+                    <dt class="col-6 fw-normal">{{ name }}</dt><dd class="col-6 mb-1">{{ "%.0f"|format(conf * 100) }}%</dd>
+                    {% endfor %}
+                </dl>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
         {% if detections %}
         <div class="content-card mt-4">
             <div class="content-card-header"><div><h2>Detections</h2></div></div>
             <ul class="list-group list-group-flush">
                 {% for det in detections %}
                 <li class="list-group-item d-flex justify-content-between">
-                    <span>{{ det.damage_type or det.class_name }}</span>
+                    <span>{{ (det.damage_type or det.class_name)|replace("_", " ")|capitalize }}</span>
                     <span>{{ "%.0f"|format((det.confidence or 0) * 100) }}%</span>
                 </li>
                 {% endfor %}
@@ -37,7 +65,7 @@
     </div>
     <div class="col-lg-8">
         <div class="content-card">
-            <div class="content-card-header"><div><h2>Annotated output</h2><p>Green pothole · yellow longitudinal · orange lateral · red alligator</p></div></div>
+            <div class="content-card-header"><div><h2>Annotated output</h2><p>Green pothole · yellow longitudinal · orange transverse · red alligator</p></div></div>
             <div class="p-4">
                 {% if annotated_url %}
                 <img class="inspection-image-preview" src="{{ annotated_url }}" alt="Annotated detections">

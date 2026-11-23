@@ -165,27 +165,72 @@ def estimate_detection_cost(
     }
 
 
+def _review_min_confidence() -> float:
+    try:
+        from app.ai.severity_rules import get_severity_rules
+
+        return float(get_severity_rules().get("confidence_min_review", 0.35))
+    except Exception:
+        return 0.35
+
+
+def cost_counts_in_total(det: dict[str, Any], min_confidence: float) -> bool | None:
+    """True = priced into the inspection total, None = waiting for review, False = rejected.
+
+    A reviewer's decision always wins; without one, only detections at or above the
+    manual-review confidence are counted, so unconfirmed guesses cannot inflate totals.
+    """
+    status = str(det.get("status") or "").upper()
+    if status == "REJECTED" or det.get("is_false_positive"):
+        return False
+    if status == "APPROVED" or det.get("is_verified"):
+        return True
+    conf = _f(det.get("confidence"))
+    if conf is None:
+        conf = _f(det.get("confidence_score"))
+    if conf is None or conf >= min_confidence:
+        return True
+    return None
+
+
 def summarize_costs(
     detections: list[dict[str, Any]],
     *,
     rates: dict[str, Any] | None = None,
+    min_confidence: float | None = None,
 ) -> dict[str, Any]:
-    """Inspection total = items x (1 + contingency) + one mobilisation charge."""
+    """Inspection total = counted items x (1 + contingency) + one mobilisation charge.
+
+    Counted items are reviewer-approved detections plus unreviewed ones at or above
+    the manual-review confidence. Low-confidence ones are reported as
+    ``pending_review_*`` and join the total once a reviewer approves them; rejected
+    ones are dropped.
+    """
     cfg = rates or get_cost_rates()
-    items_total = 0.0
-    fallback_items = 0
+    threshold = _review_min_confidence() if min_confidence is None else float(min_confidence)
+    items_total = pending_total = 0.0
+    counted = pending = rejected = fallback_items = 0
     for det in detections:
         cost = det.get("cost_estimate") or {}
         amount = _f(cost.get("amount"))
         if amount is None:
             amount = _f(det.get("estimated_cost")) or 0.0
+        verdict = cost_counts_in_total(det, threshold)
+        if verdict is False:
+            rejected += 1
+            continue
+        if verdict is None:
+            pending += 1
+            pending_total += amount
+            continue
+        counted += 1
         items_total += amount
         if cost.get("basis") == "typical_size_fallback":
             fallback_items += 1
     contingency_pct = float(cfg.get("contingency_pct", 0.0))
     contingency = items_total * contingency_pct / 100.0
-    mobilisation = float(cfg.get("mobilisation_per_site", 0.0)) if detections else 0.0
-    total = items_total + contingency + mobilisation if detections else 0.0
+    mobilisation = float(cfg.get("mobilisation_per_site", 0.0)) if counted else 0.0
+    total = items_total + contingency + mobilisation if counted else 0.0
     return {
         "items_total": round(items_total, 2),
         "contingency_pct": contingency_pct,
@@ -193,8 +238,12 @@ def summarize_costs(
         "mobilisation": round(mobilisation, 2),
         "total": round(total, 2),
         "currency": cfg.get("currency", "INR"),
-        "item_count": len(detections),
+        "item_count": counted,
         "fallback_items": fallback_items,
+        "pending_review_count": pending,
+        "pending_review_items_total": round(pending_total, 2),
+        "rejected_count": rejected,
+        "review_min_confidence": threshold,
         "rate_source": cfg.get("source"),
         "rule_version": COST_RULE_VERSION,
     }
@@ -202,6 +251,7 @@ def summarize_costs(
 
 __all__ = [
     "DEFAULT_COST_RATES",
+    "cost_counts_in_total",
     "estimate_detection_cost",
     "get_cost_rates",
     "summarize_costs",

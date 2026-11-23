@@ -66,7 +66,7 @@
                     <dt class="col-sm-4">Estimated cost</dt>
                     <dd class="col-sm-8">
                         {% if detection.estimated_cost is not none %}
-                        &#8377; {{ "{:,.0f}".format(detection.estimated_cost|float) }}
+                        &#8377; {{ "{:,.0f}".format(detection.estimated_cost|float) }}{% if cost_rates_are_placeholder() %}<span class="small text-muted" title="Placeholder unit rates — set repair_cost_rates in System Settings for municipal rates"> (indicative)</span>{% endif %}
                         {% if detection.cost_estimate %}
                         <div class="small text-muted">{{ detection.cost_estimate.detail }} @ &#8377;{{ "{:,.0f}".format(detection.cost_estimate.unit_rate|float) }}/{{ detection.cost_estimate.unit }}{% if detection.cost_estimate.basis == "typical_size_fallback" %} · typical size used{% endif %}</div>
                         {% endif %}

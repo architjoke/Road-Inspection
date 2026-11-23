@@ -237,6 +237,19 @@ def create_app(config_overrides: dict | None = None):
     app.register_blueprint(training_bp)
     app.register_blueprint(field_worker_bp)
 
+    @app.context_processor
+    def _cost_rate_helpers():
+        def cost_rates_are_placeholder() -> bool:
+            """True while repair_cost_rates is unset in system_settings (cached 5 min)."""
+            try:
+                from app.ai.cost_engine import get_cost_rates
+
+                return get_cost_rates().get("source") == "placeholder_defaults"
+            except Exception:
+                return True
+
+        return {"cost_rates_are_placeholder": cost_rates_are_placeholder}
+
     logger.info(
         "Application ready offline_mode=%s database_configured=%s",
         bool(app.config.get("OFFLINE_MODE")),

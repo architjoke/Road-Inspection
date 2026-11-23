@@ -28,7 +28,7 @@ numpy>=1.26
 requests>=2.31
 
 # YOLO inference (CPU is fine for the web app)
-ultralytics>=8.1.0
+ultralytics>=8.4.216  # YOLO11 weights (C3k2) need 8.3+; matches the Kaggle training run
 torch>=2.0.0
 
 # Reports

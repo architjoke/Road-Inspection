@@ -211,7 +211,14 @@ def compile_inspection_report(inspection_id: int) -> dict[str, Any]:
                 det.get("damage_type"), severity, det.get("measurements")
             )
             cost_detail = {}
-        cost_inputs.append({"cost_estimate": cost_detail, "estimated_cost": cost})
+        cost_inputs.append(
+            {
+                "cost_estimate": cost_detail,
+                "estimated_cost": cost,
+                "confidence": det.get("confidence"),
+                "status": det.get("status"),
+            }
+        )
         severity_counts[severity] += 1
         priority_counts[priority] += 1
         timeline = _TIMELINE.get(severity, _TIMELINE["MODERATE"])
@@ -356,6 +363,9 @@ def compile_inspection_report(inspection_id: int) -> dict[str, Any]:
                 "length (m), alligator treatment area (m2). Sizes are estimated "
                 "from the photo with an assumed camera pose; depth is assumed per "
                 "severity band. Total adds contingency and one mobilisation charge. "
+                "Detections below the manual-review confidence are excluded until a "
+                f"reviewer approves them ({cost_summary.get('pending_review_count', 0)} pending, "
+                f"INR {cost_summary.get('pending_review_items_total', 0):,.0f}); rejected ones are dropped. "
                 f"Rates: {cost_summary.get('rate_source')} (not a municipal bid)."
             ),
             "rds_contacted": False,

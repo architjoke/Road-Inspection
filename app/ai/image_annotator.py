@@ -34,6 +34,27 @@ def _color_for(det: dict[str, Any]) -> tuple[int, int, int]:
     return (37, 99, 235)
 
 
+def _label_font(size: int):
+    try:
+        return ImageFont.load_default(size=size)  # Pillow >= 10.1: scalable built-in font
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def _draw_label(draw, image_size, anchor, label: str, color, font) -> None:
+    """White text on a filled tab in the box colour, kept inside the image."""
+    x1, y1 = anchor
+    left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+    pad = max(2, (bottom - top) // 5)
+    w, h = right - left + 2 * pad, bottom - top + 2 * pad
+    x = min(max(0, x1), max(0, image_size[0] - w))
+    y = y1 - h if y1 - h >= 0 else y1  # above the box, or just inside it at the top edge
+    draw.rectangle([x, y, x + w, y + h], fill=color)
+    luminance = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
+    text_color = (17, 24, 39) if luminance > 150 else (255, 255, 255)  # dark text on yellow/orange
+    draw.text((x + pad - left, y + pad - top), label, fill=text_color, font=font)
+
+
 def _ensure_dest(source: Path, output_path: str | Path) -> Path:
     dest = Path(output_path)
     if dest.resolve() == source.resolve():
@@ -59,21 +80,19 @@ def annotate_detections(
         # Boxes are in upright (EXIF-applied) coordinates; draw on the same frame.
         canvas = ImageOps.exif_transpose(image).convert("RGB")
         draw = ImageDraw.Draw(canvas)
-        try:
-            font = ImageFont.load_default()
-        except Exception:
-            font = None
+        # Scale strokes and text with the photo so labels stay readable on
+        # phone-sized and full-resolution images alike.
+        short_side = min(canvas.size)
+        line_width = max(2, round(short_side / 250))
+        font = _label_font(max(12, round(short_side / 32)))
 
         for det in detections:
             x1, y1, x2, y2 = det["bbox_xyxy"]
             color = _color_for(det)
-            draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-            label = (
-                f"{det.get('damage_type') or det.get('class_name')} "
-                f"{float(det.get('confidence', 0)):.2f}"
-            )
-            text_y = max(0, y1 - 14)
-            draw.text((x1 + 2, text_y), label, fill=color, font=font)
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=line_width)
+            name = str(det.get("damage_type") or det.get("class_name") or "damage")
+            label = f"{name.replace('_', ' ').capitalize()} {float(det.get('confidence', 0)) * 100:.0f}%"
+            _draw_label(draw, canvas.size, (x1, y1), label, color, font)
 
         canvas.save(dest, format="JPEG", quality=90)
 

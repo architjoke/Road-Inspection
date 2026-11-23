@@ -17,7 +17,7 @@
     <div class="p-4">
         <dl class="row mb-0">
             <dt class="col-sm-4">Offline mode</dt>
-            <dd class="col-sm-8">{{ "On (local demo, no RDS login)" if offline_mode else "Off (RDS + ImageKit)" }}</dd>
+            <dd class="col-sm-8">{{ "On (local demo, no Supabase login)" if offline_mode else "Off (Supabase + ImageKit)" }}</dd>
             <dt class="col-sm-4">Database configured</dt>
             <dd class="col-sm-8">{{ "Yes" if database_configured else "No — check DATABASE_URL" }}</dd>
             <dt class="col-sm-4">ImageKit CDN</dt>
@@ -25,11 +25,42 @@
             <dt class="col-sm-4">YOLO device</dt>
             <dd class="col-sm-8">{{ yolo_device }}</dd>
             <dt class="col-sm-4">YOLO mock detector</dt>
-            <dd class="col-sm-8">{{ "On" if yolo_force_mock else "Off (uses best.pt when present)" }}</dd>
+            <dd class="col-sm-8">{{ "On — placeholder detections only" if yolo_force_mock else "Off (real model; analysis fails visibly if it cannot load)" }}</dd>
+            <dt class="col-sm-4">Detection model</dt>
+            <dd class="col-sm-8">
+                {% if model.exists %}{{ model.architecture or model.file }} · {{ model.imgsz }} px{% if model.map50 is not none %} · India val mAP50 {{ "%.3f"|format(model.map50) }}{% endif %}{% if model.promoted_at %} · promoted {{ model.promoted_at }}{% endif %}
+                {% else %}<span class="text-danger">Missing: artifacts/ai_models/{{ model.file }}</span>{% endif %}
+            </dd>
+        </dl>
+
+        <h2 class="h6 mt-4 mb-3">Severity &amp; repair cost</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Severity thresholds</dt>
+            <dd class="col-sm-8">
+                {% set pot = (severity_rules.classes or {}).get('pothole') or {} %}
+                {{ "Supabase system_settings" if severity_rules.threshold_source != "code_defaults" else "Built-in defaults" }}
+                {% if pot %} · pothole moderate ≥ {{ "%.0f"|format(pot.moderate) }} mm, severe ≥ {{ "%.0f"|format(pot.severe) }} mm average diameter{% endif %}
+                · confidence below {{ "%.0f"|format(severity_rules.confidence_min_review * 100) }}% is sent to manual review
+            </dd>
+            <dt class="col-sm-4">Repair cost rates</dt>
+            <dd class="col-sm-8">
+                {% if cost_rates.source == "placeholder_defaults" %}
+                <span class="text-warning fw-semibold">Placeholder rates — not your municipality's Schedule of Rates.</span>
+                Costs shown in the app are indicative only. Add a <code>repair_cost_rates</code> row to Supabase
+                <code>system_settings</code> to use real rates.
+                {% else %}
+                From {{ cost_rates.source }}
+                {% endif %}
+                <br><span class="text-muted small">
+                    {{ cost_rates.currency }} · pothole patch {{ "{:,.0f}".format(cost_rates.rates.pothole_patch_per_m3) }}/m³
+                    · mobilisation {{ "{:,.0f}".format(cost_rates.mobilisation_per_site) }}/site
+                    · contingency {{ "%.0f"|format(cost_rates.contingency_pct) }}%
+                </span>
+            </dd>
         </dl>
         <p class="text-muted small mt-4 mb-0">
             Change values in <code>.env (project root)</code> and restart Flask.
-            Seed an admin with <code>venv\Scripts\python.exe scripts\seed_auth.py</code> when RDS is reachable.
+            Seed an admin with <code>venv\Scripts\python.exe scripts\seed_auth.py</code> when Supabase is reachable.
         </p>
     </div>
 </div>

@@ -624,14 +624,40 @@ def detections_review(detection_id: int):
 
 @api_bp.route("/repairs/<int:repair_id>/mark-verified", methods=["POST"])
 @login_required
-@roles_required("super_admin", "municipal_admin", "field_officer")
+@roles_required("super_admin", "municipal_admin")
 def repairs_mark_verified(repair_id: int):
+    """Final human verification; requires a Verify SSIM run for this repair."""
+    from app.services.audit_trail import record_audit_event
     from app.services.repair_service import get_repair
-    from app.services.workflow_service import mark_repair_verified
+    from app.services.workflow_service import VerificationDecisionError, mark_repair_verified
 
     if get_repair(repair_id) is None:
         return jsonify({"error": "Repair not found."}), 404
-    updated = mark_repair_verified(repair_id)
+    payload = request.get_json(silent=True) or {}
+    note = payload.get("note") or request.form.get("note")
+    actor = getattr(current_user, "pk", getattr(current_user, "id", None))
+    try:
+        updated = mark_repair_verified(
+            repair_id,
+            decided_by=actor,
+            decided_by_name=getattr(current_user, "full_name", None),
+            note=note,
+        )
+    except VerificationDecisionError as exc:
+        return jsonify({"error": str(exc)}), 400
+    decision = ((updated or {}).get("verification") or {}).get("final_decision") or {}
+    record_audit_event(
+        "repair.verified",
+        actor=str(actor),
+        resource_type="repair",
+        resource_id=repair_id,
+        details={
+            "comparison_id": decision.get("comparison_id"),
+            "ssim_recommendation": decision.get("ssim_recommendation"),
+            "followed_ssim": decision.get("followed_ssim"),
+            "note": decision.get("note"),
+        },
+    )
     return jsonify({"ok": True, "repair": updated})
 
 
@@ -839,20 +865,14 @@ def verification_compare():
                     "compared_at": record.get("created_at"),
                 },
             )
-        if repair_id and (
-            status_text == "Repair Verified"
-            or "Partial" in status_text
-        ):
-            from app.services.workflow_service import mark_repair_verified
+        # SSIM only recommends. The repair is never verified here: an admin makes
+        # the final call with /api/repairs/<id>/mark-verified (which needs this run).
+        from app.services.workflow_service import ssim_recommendation
 
-            # Auto-verify (which can trigger contractor payment) only on a clear
-            # result with nothing flagged; everything else needs a human.
-            if status_text == "Repair Verified" and not record.get("manual_review_required"):
-                mark_repair_verified(
-                    repair_id,
-                    comparison_id=record.get("comparison_id"),
-                )
-                record["repair_status"] = "verified"
+        record["ssim_recommendation"] = ssim_recommendation(
+            {"status": status_text, "manual_review_required": record.get("manual_review_required")}
+        )
+        if repair_id:
             record["repair_id"] = repair_id
 
         return jsonify(record), 201

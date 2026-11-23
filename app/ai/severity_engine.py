@@ -147,6 +147,15 @@ def estimate_measurements(
     width_m = float(ground["width_m"])
     length_m = float(ground["length_m"])
 
+    # A box bigger than any real defect of this kind means a bad box or a photo the
+    # ground-plane model cannot measure (e.g. a top-down close-up): fall back to the
+    # typical-size path and send it to review instead of pricing a huge patch.
+    max_side = _safe_float(class_rules.get("max_plausible_m"))
+    if max_side and max(width_m, length_m) > max_side:
+        out["reasons"].append("implausible_size")
+        out["rejected_size_m"] = [round(width_m, 2), round(length_m, 2)]
+        return out
+
     # Area fill: segmentation mask coverage of the box beats a shape constant.
     mask_px = _safe_float(detection.get("mask_pixel_count"))
     box_px = geom.get("area") or 0.0
@@ -265,6 +274,8 @@ def assess_severity(
         review_reasons.append("relative_depth_confidence_conflict")
     if "too_far_from_camera" in measurements["reasons"]:
         review_reasons.append("far_from_camera")
+    if "implausible_size" in measurements["reasons"]:
+        review_reasons.append("implausible_size_estimate")
     review_reasons = list(dict.fromkeys(review_reasons))
     manual_review = bool(review_reasons)
 

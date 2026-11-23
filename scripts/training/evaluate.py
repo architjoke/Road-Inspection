@@ -6,8 +6,8 @@ Steps
    RDD India val split — each at its own training image size, as deployed.
 2. Optional: also on ``local_val.yaml`` (your municipality's labelled photos).
 3. Tune one confidence threshold per class on the candidate's val curves,
-   maximising F-beta (beta=1.5 favours recall: a missed pothole costs more than
-   a false alarm, which a reviewer rejects in seconds).
+   maximising F-beta (beta=2 favours recall: a missed pothole or minor crack
+   costs more than a false alarm, which a reviewer rejects in seconds).
 4. Gate (all must pass):
       * India val mAP50 >= baseline mAP50
       * pothole AP50 >= baseline pothole AP50 - 0.02
@@ -135,6 +135,17 @@ def gate(cand: dict, base: dict, cand_local: dict | None, base_local: dict | Non
     return checks
 
 
+def _class_drops(cand: dict, base: dict, tol: float = 0.05) -> list[tuple[str, float, float]]:
+    """Classes whose AP50 fell by more than ``tol`` — the gate only checks potholes and the mean."""
+    drops = []
+    for name in CLASS_NAMES.values():
+        b = base["per_class"].get(name, {}).get("ap50", 0.0)
+        c = cand["per_class"].get(name, {}).get("ap50", 0.0)
+        if b - c > tol:
+            drops.append((name, b, c))
+    return drops
+
+
 def _table(cand: dict, base: dict) -> str:
     lines = [
         "| Metric | Baseline | Candidate | Change |",
@@ -177,7 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--local-data", type=Path, default=None,
                     help="local_val.yaml (defaults to the one next to --data if present)")
     ap.add_argument("--device", default="0")
-    ap.add_argument("--beta", type=float, default=1.5, help="F-beta for threshold tuning")
+    ap.add_argument("--beta", type=float, default=2.0,
+                    help="F-beta for threshold tuning (2.0 favours recall so minor damage is reported)")
     ap.add_argument("--promote", action="store_true")
     ap.add_argument("--force", action="store_true", help="promote even if the gate fails")
     args = ap.parse_args(argv)
@@ -194,7 +206,15 @@ def main(argv: list[str] | None = None) -> int:
     if local:
         cand_local = validate(args.candidate, local, "val", args.device, out_dir, "candidate_local")
         base_local = validate(args.baseline, local, "val", args.device, out_dir, "baseline_local")
-    cand_test = validate(args.candidate, args.data, "test", args.device, out_dir, "candidate_test")
+    import yaml
+
+    has_test = bool((yaml.safe_load(args.data.read_text(encoding="utf-8")) or {}).get("test"))
+    run_card_file = args.candidate.resolve().parents[1] / "run_card.json"
+    if has_test and run_card_file.exists():
+        built = (json.loads(run_card_file.read_text(encoding="utf-8")).get("dataset") or {})
+        if built.get("fold_test"):
+            has_test = False  # the candidate trained on the India test split: its score would be inflated
+    cand_test = validate(args.candidate, args.data, "test", args.device, out_dir, "candidate_test") if has_test else None
 
     thresholds = tune_thresholds(cand["_curves"], args.beta)
     checks = gate(cand, base, cand_local, base_local)
@@ -207,12 +227,15 @@ def main(argv: list[str] | None = None) -> int:
         "## RDD India val",
         _table(cand, base),
         "",
-        f"Candidate on held-out India **test**: mAP50 {cand_test['map50']:.3f}, "
-        f"recall {cand_test['recall']:.3f}.",
+        (f"Candidate on held-out India **test**: mAP50 {cand_test['map50']:.3f}, "
+         f"recall {cand_test['recall']:.3f}." if cand_test else
+         "No held-out test score: the India test split was folded into training (--fold-test)."),
         "",
         "## Gate",
         *[f"- {'PASS' if c['pass'] else 'FAIL'}: {c['check']} "
           f"(candidate {c['candidate']:.3f} vs {c['baseline']:.3f})" for c in checks],
+        *[f"- WARNING: {name} AP50 dropped {b:.3f} -> {c:.3f} (not gated; check before promoting)"
+          for name, b, c in _class_drops(cand, base)],
         "",
         f"## Per-class thresholds (F{args.beta:g} on val)",
         *[f"- {name}: conf {t['conf']} -> precision {t['precision']}, recall {t['recall']}"
@@ -225,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         "candidate_local": _public(cand_local), "baseline_local": _public(base_local),
         "candidate_test": _public(cand_test), "thresholds": thresholds,
         "gate": checks, "passed": passed,
+        "class_drops": [{"class": n, "baseline": b, "candidate": c} for n, b, c in _class_drops(cand, base)],
     }
     (out_dir / "evaluation.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print("\n" + report)
@@ -251,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
             if run_card_path.exists() else None,
         }
         target = promote(args.candidate, card)
-        print(f"Promoted -> {target} (+ best.model.json). Restart Flask to load it.")
+        print(f"Promoted -> {target} (+ best.model.json). The running app loads it on its next detection.")
     return 0 if passed else 1
 
 

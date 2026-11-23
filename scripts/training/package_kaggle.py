@@ -1,21 +1,29 @@
 """Package everything Kaggle needs into one zip (upload it as a Kaggle Dataset).
 
-Contents of ``artifacts/kaggle/road-inspection-india.zip``:
+Output (ready for the Kaggle CLI):
+
+    artifacts/kaggle/dataset/road-inspection-india.zip + dataset-metadata.json
+    artifacts/kaggle/kernel/kaggle_train.ipynb        + kernel-metadata.json
+
+Contents of the zip:
 
     road_v2/{train,val,test}/{images,labels}   corrected RDD2022 India data
     scripts/training/*.py                       the training pipeline
     artifacts/ai_models/best.pt                 current production model (A/B baseline)
 
-The ready-to-import notebook is copied next to it:
-``artifacts/kaggle/kaggle_train.ipynb``.
-
-Usage:
-    python scripts/training/package_kaggle.py
+Usage (project root, after ``kaggle auth login``):
+    python scripts/training/package_kaggle.py --user <kaggle-username>
+    kaggle datasets create -p artifacts/kaggle/dataset        # first time
+    kaggle datasets version -p artifacts/kaggle/dataset -m "update"   # later
+    kaggle kernels push -p artifacts/kaggle/kernel --accelerator NvidiaTeslaT4
+    kaggle kernels status <user>/road-inspection-training
+    kaggle kernels output <user>/road-inspection-training -p artifacts/runs
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import zipfile
@@ -31,7 +39,8 @@ NOTEBOOK = Path(__file__).resolve().parent / "kaggle_train.ipynb"
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--road", type=Path, default=DEFAULT_ROAD)
-    ap.add_argument("--out", type=Path, default=OUT_DIR / "road-inspection-india.zip")
+    ap.add_argument("--out", type=Path, default=OUT_DIR / "dataset" / "road-inspection-india.zip")
+    ap.add_argument("--user", default=None, help="Kaggle username (writes the CLI metadata files)")
     args = ap.parse_args(argv)
 
     if not (args.road / "train" / "images").is_dir():
@@ -61,10 +70,33 @@ def main(argv=None) -> int:
         else:
             print("WARNING: no artifacts/ai_models/best.pt — the Kaggle run will skip the A/B gate")
 
-    shutil.copy2(NOTEBOOK, args.out.parent / NOTEBOOK.name)
+    kernel_dir = OUT_DIR / "kernel"
+    kernel_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(NOTEBOOK, kernel_dir / NOTEBOOK.name)
+    if args.user:
+        dataset_id = f"{args.user}/road-inspection-india"
+        (args.out.parent / "dataset-metadata.json").write_text(json.dumps({
+            "title": "Road Inspection India",
+            "id": dataset_id,
+            "subtitle": "RDD2022 India labels and training scripts for road inspection",
+            "licenses": [{"name": "CC-BY-SA-4.0"}],
+        }, indent=2), encoding="utf-8")
+        (kernel_dir / "kernel-metadata.json").write_text(json.dumps({
+            "id": f"{args.user}/road-inspection-training",
+            "title": "Road Inspection Training",
+            "code_file": NOTEBOOK.name,
+            "language": "python",
+            "kernel_type": "notebook",
+            "is_private": True,
+            "enable_gpu": True,
+            "enable_internet": True,
+            "dataset_sources": [dataset_id],
+            "competition_sources": [],
+            "kernel_sources": [],
+        }, indent=2), encoding="utf-8")
     size_mb = args.out.stat().st_size / 1e6
     print(f"Wrote {args.out} ({files} files, {size_mb:.0f} MB)")
-    print(f"Notebook: {args.out.parent / NOTEBOOK.name}")
+    print(f"Notebook: {kernel_dir / NOTEBOOK.name}")
     return 0
 
 

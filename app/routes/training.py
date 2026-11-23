@@ -18,6 +18,7 @@ from flask_login import login_required
 from werkzeug.utils import secure_filename
 
 from app.decorators import roles_required
+from app.ai.model_loader import ModelUnavailableError, active_model_summary
 
 training_bp = Blueprint("training", __name__, url_prefix="/training")
 
@@ -56,6 +57,10 @@ def index():
                     flash("No damages detected above the confidence threshold.", "warning")
                 else:
                     flash(f"Detected {len(detections)} damage region(s).", "success")
+            except ModelUnavailableError as exc:
+                current_app.logger.error("Training preview: %s", exc)
+                error = str(exc)
+                flash(f"Detection model unavailable: {exc}", "danger")
             except Exception as exc:
                 current_app.logger.exception("Training preview failed")
                 error = str(exc)
@@ -66,6 +71,7 @@ def index():
         annotated_url=annotated_url,
         detections=detections,
         error=error,
+        model=active_model_summary(),
     )
 
 
@@ -76,5 +82,8 @@ def annotated(token: str):
     path = _output_root() / f"{token}_annotated.jpg"
     if not path.is_file():
         flash("Annotated image expired or missing.", "danger")
-        return render_template("training/index.html", annotated_url=None, detections=[], error="missing"), 404
+        return render_template(
+            "training/index.html", annotated_url=None, detections=[], error="missing",
+            model=active_model_summary(),
+        ), 404
     return send_file(path, mimetype="image/jpeg")

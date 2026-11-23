@@ -67,7 +67,15 @@ def _resolve_local_media_path(media) -> Path | None:
             continue
         if path.exists() and path.is_file():
             return path
-    return None
+    # Temp copies are cleaned up over time; the original stays on ImageKit, so
+    # re-analysis (e.g. after a model upgrade) fetches it back.
+    try:
+        from app.utils.media_cache import ensure_local_media
+
+        return ensure_local_media(media)
+    except Exception:
+        logger.exception("Could not fetch media %s from ImageKit", getattr(media, "id", None))
+        return None
 
 
 def _update_inspection_status(

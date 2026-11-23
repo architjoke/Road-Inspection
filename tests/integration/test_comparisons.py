@@ -120,7 +120,9 @@ def test_alignment_homography_or_fallback():
     cv2.rectangle(after, (60, 60), (160, 160), (10, 10, 10), -1)
     result = align_images(before, after)
     assert result.aligned_after.shape[:2] == before.shape[:2]
-    assert result.method in {"orb_homography", "resize_fallback"}
+    base = result.method.removesuffix("+ecc")
+    assert base in {"sift_homography", "sift_affine", "orb_homography", "orb_affine",
+                    "ecc_same_viewpoint", "resize_fallback"}
     assert result.match_count >= 0
 
 
@@ -282,3 +284,87 @@ def test_task_result_includes_verification_when_linked(tmp_path, app):
         assert "verification" in payload
         assert payload["verification"]["count"] >= 1
         assert "completion_percentage" in payload["verification"]
+
+
+def _resurfacing_pair() -> tuple[np.ndarray, np.ndarray]:
+    """Same viewpoint: stable verge/trees on top, the whole road re-laid below."""
+    rng = np.random.default_rng(11)
+    top = cv2.GaussianBlur(rng.integers(30, 230, size=(140, 480), dtype=np.uint8), (5, 5), 0)
+    cv2.rectangle(top, (30, 20), (110, 120), 240, -1)
+    cv2.circle(top, (330, 70), 45, 25, -1)
+    old_road = cv2.GaussianBlur(rng.integers(40, 160, size=(220, 480), dtype=np.uint8), (3, 3), 0)
+    for cx, cy, r in ((120, 70, 35), (330, 120, 45), (220, 180, 30)):  # potholes
+        cv2.circle(old_road, (cx, cy), r, 15, -1)
+    new_road = np.random.default_rng(99).integers(70, 95, size=(220, 480), dtype=np.uint8)  # fresh asphalt
+    for road in (old_road, new_road):
+        cv2.line(road, (240, 0), (240, 220), 250, 6)  # centre line survives
+    before = cv2.cvtColor(np.vstack([top, old_road]), cv2.COLOR_GRAY2BGR)
+    after = cv2.cvtColor(np.vstack([top, new_road]), cv2.COLOR_GRAY2BGR)
+    return before, after
+
+
+def test_full_resurfacing_is_verified(tmp_path):
+    """Whole road re-laid: the ring around the pothole changes too — still a repair."""
+    before, after = _resurfacing_pair()
+    b = _save_bgr(tmp_path / "before.jpg", before)
+    a = _save_bgr(tmp_path / "after.jpg", after)
+    roi = (290, 140 + 75, 370, 140 + 165)  # pothole at (330, 120) in road coordinates
+    result = compare_before_after(b, a, output_dir=tmp_path / "out", roi=roi)
+    assert result["alignment"]["success"] is True
+    assert result["overlap_ratio"] >= 0.6
+    assert result["status"] == STATUS_VERIFIED
+    assert result["manual_review_required"] is False
+    assert any("resurfaced" in n for n in result["notes"])
+
+
+def test_lighting_change_without_repair_is_not_verified(tmp_path):
+    before, _ = _resurfacing_pair()
+    darker = np.clip(before.astype(np.float32) * 0.55, 0, 255).astype(np.uint8)
+    b = _save_bgr(tmp_path / "before.jpg", before)
+    a = _save_bgr(tmp_path / "after.jpg", darker)
+    result = compare_before_after(b, a, roi=(290, 215, 370, 305))
+    assert result["status"] != STATUS_VERIFIED or result["manual_review_required"] is True
+
+
+def _view(img: np.ndarray, rot: float = 0.0, zoom: float = 1.0, tilt: float = 0.0) -> np.ndarray:
+    """Re-photograph the scene from another angle (rotation, distance, phone pitch)."""
+    h, w = img.shape[:2]
+    m = np.vstack([cv2.getRotationMatrix2D((w / 2, h / 2), rot, zoom), [0, 0, 1]])
+    k = tilt * w
+    keystone = cv2.getPerspectiveTransform(
+        np.float32([[0, 0], [w, 0], [w, h], [0, h]]), np.float32([[k, 0], [w - k, 0], [w, h], [0, h]])
+    )
+    return cv2.warpPerspective(img, keystone @ m, (w, h), borderMode=cv2.BORDER_REFLECT)
+
+
+@pytest.mark.parametrize("angle", [dict(rot=7), dict(zoom=0.85), dict(zoom=1.15), dict(tilt=0.1),
+                                   dict(rot=-6, zoom=0.9, tilt=0.06)])
+def test_resurfacing_verified_from_another_angle(tmp_path, angle):
+    before, after = _resurfacing_pair()
+    b = _save_bgr(tmp_path / "before.jpg", before)
+    a = _save_bgr(tmp_path / "after.jpg", _view(after, **angle))
+    result = compare_before_after(b, a, roi=(290, 215, 370, 305))
+    assert result["alignment"]["success"] is True
+    assert result["status"] == STATUS_VERIFIED and result["manual_review_required"] is False
+
+
+@pytest.mark.parametrize("angle", [dict(rot=7), dict(zoom=0.85), dict(tilt=0.1)])
+def test_unrepaired_road_from_another_angle_is_not_verified(tmp_path, angle):
+    before, _ = _resurfacing_pair()
+    b = _save_bgr(tmp_path / "before.jpg", before)
+    a = _save_bgr(tmp_path / "after.jpg", _view(before, **angle))
+    result = compare_before_after(b, a, roi=(290, 215, 370, 305))
+    assert result["status"] != STATUS_VERIFIED or result["manual_review_required"] is True
+
+
+def test_mirrored_photo_is_not_accepted_as_same_scene(tmp_path):
+    from app.ai.before_after_verifier import VerificationError
+
+    before, after = _resurfacing_pair()
+    b = _save_bgr(tmp_path / "before.jpg", before)
+    a = _save_bgr(tmp_path / "after.jpg", cv2.flip(after, 1))
+    try:
+        result = compare_before_after(b, a, roi=(290, 215, 370, 305))
+    except VerificationError:
+        return
+    assert result["status"] != STATUS_VERIFIED or result["manual_review_required"] is True

@@ -484,8 +484,14 @@ def repairs_verify():
             before_error = "No before image available for this inspection ID"
     if repair and repair.get("evidence_path"):
         after_url = url_for("protected.repair_after_image", repair_id=repair["id"])
+    from app.services.workflow_service import FINAL_VERIFIER_ROLES, ssim_recommendation
+
+    saved_verification = (repair or {}).get("verification") or {}
     return render_template(
         "repairs/manager.html",
+        can_final_verify=getattr(current_user, "dashboard_role_key", None) in FINAL_VERIFIER_ROLES,
+        saved_verification=saved_verification or None,
+        saved_recommendation=ssim_recommendation(saved_verification),
         inspection_id=inspection_id,
         repair_id=repair_id,
         repair=repair,
@@ -552,6 +558,16 @@ def repair_detail(repair_id: int):
         status = request.form.get("status")
         assignee_id = _safe_int(request.form.get("assignee_id"))
         notes = request.form.get("notes")
+        pay = request.form.get("payment_status")
+        already_verified = row.get("status") in {"verified", "paid", "closed"}
+        # Verification is only granted through Verify SSIM + an admin decision;
+        # payment and closing only after that.
+        if status == "verified" and row.get("status") != "verified":
+            flash("Repairs are verified from Verify SSIM by an admin, not from this form.", "danger")
+            return redirect(url_for("protected.repair_detail", repair_id=repair_id))
+        if (status in {"paid", "closed"} or pay == "paid") and not already_verified:
+            flash("Verify the repair (Verify SSIM + admin decision) before closing or paying it.", "danger")
+            return redirect(url_for("protected.repair_detail", repair_id=repair_id))
         update_repair(
             repair_id,
             status=status,
@@ -559,7 +575,6 @@ def repair_detail(repair_id: int):
             assignee_name=resolve_assignee_name(assignee_id) if assignee_id else None,
             notes=notes,
         )
-        pay = request.form.get("payment_status")
         if pay == "paid":
             # Paid is terminal for payment; keep job verified/closed semantics.
             update_repair(repair_id, payment_status="paid", status="paid")
@@ -682,6 +697,9 @@ def reports():
 @protected_bp.route("/settings")
 @roles_required("super_admin")
 def settings():
+    from app.ai.cost_engine import get_cost_rates
+    from app.ai.model_loader import active_model_summary
+    from app.ai.severity_rules import get_severity_rules
     from app.services.imagekit_service import is_imagekit_configured
 
     imagekit_ok = False
@@ -698,6 +716,9 @@ def settings():
         imagekit_configured=imagekit_ok,
         yolo_device=current_app.config.get("YOLO_DEVICE", "cpu"),
         yolo_force_mock=bool(current_app.config.get("YOLO_FORCE_MOCK")),
+        model=active_model_summary(),
+        severity_rules=get_severity_rules(),
+        cost_rates=get_cost_rates(),
         flask_host=current_app.config.get("FLASK_HOST") or "0.0.0.0",
         flask_port=current_app.config.get("FLASK_PORT") or "5000",
     )

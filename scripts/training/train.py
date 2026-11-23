@@ -16,6 +16,18 @@ AMP stays OFF by default — on this 4060 setup AMP produced NaN losses and
 all-zero validation. A guard stops the run if validation mAP collapses to 0
 after the warm-up epochs, instead of burning hours until patience runs out.
 
+Time budget (--hours)
+---------------------
+Ultralytics' ``time`` re-estimates ``epochs`` after every epoch so the run fills
+the budget, and rebuilds the cosine LR schedule (and the close_mosaic point) for
+that new epoch count. On a T4 (~82 s/epoch) 10.5 h means ~460 epochs. Early
+stopping fights that design: with patience=40 the first Kaggle run stopped at
+epoch 92 of ~460 while the LR was still near its peak, so the model never reached
+the low-LR / no-mosaic phase where most of the late gains come from. With
+--hours, early stopping is therefore OFF by default (patience=0) and the budget
+decides when to stop; best.pt still keeps the best validation epoch. Pass
+--patience N to override.
+
 Examples
 --------
     python scripts/training/train.py --data data/build/india_v3/data.yaml --profile laptop
@@ -112,6 +124,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--hours", type=float, default=None,
                     help="wall-clock budget; training stops in time and keeps best.pt "
                          "(e.g. 10.5 for a 12 h Kaggle session)")
+    ap.add_argument("--patience", type=int, default=None,
+                    help="early-stopping patience in epochs; 0 disables it. Default: the "
+                         "profile value, or 0 when --hours is set (see module docstring)")
+    ap.add_argument("--save-period", type=int, default=-1,
+                    help="also keep weights/epochN.pt every N epochs (last.pt is written every epoch)")
     ap.add_argument("--batch", type=int, default=None, help="drop to 8/6 on CUDA OOM")
     ap.add_argument("--imgsz", type=int, default=None)
     ap.add_argument("--device", default="0")
@@ -120,9 +137,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cache", choices=["none", "disk", "ram"], default="none")
     ap.add_argument("--name", default=None)
     ap.add_argument("--project", type=Path, default=RUNS_DIR, help="runs folder")
-    ap.add_argument("--resume", type=Path, default=None, help="resume a run from its last.pt")
+    ap.add_argument("--resume", type=Path, default=None,
+                    help="resume a run from its last.pt (optimizer, LR schedule, EMA and "
+                         "early-stopping state come from the checkpoint)")
     ap.add_argument("--dry-run", action="store_true", help="print the resolved config only")
     args = ap.parse_args(argv)
+
+    if args.resume:
+        return _resume(args)
 
     profile = dict(PROFILES[args.profile])
     hyp = {**COMMON_HYP, **{k: v for k, v in profile.items() if k in COMMON_HYP}}
@@ -138,7 +160,8 @@ def main(argv: list[str] | None = None) -> int:
         epochs=args.epochs or profile["epochs"],
         imgsz=args.imgsz or profile["imgsz"],
         batch=args.batch or profile["batch"],
-        patience=profile["patience"],
+        patience=_patience(args, profile["patience"]),
+        save_period=args.save_period,
         device=args.device,
         workers=args.workers,
         amp=bool(args.amp),
@@ -159,30 +182,81 @@ def main(argv: list[str] | None = None) -> int:
 
     from ultralytics import YOLO
 
-    if args.resume:
-        model = YOLO(str(args.resume))
-        model.add_callback("on_fit_epoch_end", _collapse_guard())
-        model.train(resume=True)
-        return 0
-
     model = YOLO(base)
     model.add_callback("on_fit_epoch_end", _collapse_guard())
     model.train(**train_args)
 
-    run_dir = args.project.resolve() / name
+    # Ultralytics renames the folder (name2, name3...) when it already exists — use the real one.
+    run_dir = Path(model.trainer.save_dir)
+    _write_card(run_dir, args, base, train_args)
+    return 0
+
+
+def _patience(args, profile_patience: int) -> int:
+    if args.patience is not None:
+        return args.patience
+    return 0 if args.hours else profile_patience
+
+
+def _resume(args) -> int:
+    """Continue an interrupted run from last.pt in its own folder (never a new run)."""
+    import torch
+
+    last = args.resume.resolve()
+    if not last.is_file():
+        print(f"ERROR: {last} not found")
+        return 2
+    ckpt = torch.load(last, map_location="cpu", weights_only=False)
+    epoch = int(ckpt.get("epoch", -1))
+    saved = ckpt.get("train_args") or {}
+    if epoch < 0 or ckpt.get("optimizer") is None:
+        # Ultralytics strips the optimizer from last.pt once a run finishes.
+        print(f"{last} is from a finished run — nothing to resume; its best.pt is final.")
+        return 0
+    print(f"Resuming {last}: epoch {epoch + 1} done of ~{saved.get('epochs')} "
+          f"(best fitness so far {ckpt.get('best_fitness')})")
+
+    # Only settings Ultralytics allows to change on resume; everything else
+    # (optimizer, LR schedule position, EMA, best fitness, patience counter) comes from the checkpoint.
+    overrides = dict(device=args.device, workers=args.workers)
+    if args.hours:
+        overrides["time"] = float(args.hours)  # budget for this session; epochs are re-estimated from here
+    if args.patience is not None or args.hours:
+        overrides["patience"] = _patience(args, saved.get("patience", 0))
+    if args.batch:
+        overrides["batch"] = args.batch
+    if args.data:
+        overrides["data"] = str(args.data.resolve())
+    print(json.dumps({"resume": str(last), **overrides}, indent=2))
+    if args.dry_run:
+        return 0
+
+    from ultralytics import YOLO
+
+    model = YOLO(str(last))
+    model.add_callback("on_fit_epoch_end", _collapse_guard())
+    model.train(resume=True, **overrides)
+    run_dir = Path(model.trainer.save_dir)
+    _write_card(run_dir, args, saved.get("model"), {**saved, **overrides}, resumed_from=str(last))
+    return 0
+
+
+def _write_card(run_dir: Path, args, base, train_args: dict, resumed_from: str | None = None) -> None:
     card = {
         "created": datetime.now().isoformat(timespec="seconds"),
         "profile": args.profile,
         "base_weights": base,
-        "train_args": train_args,
+        "train_args": {k: (str(v) if isinstance(v, Path) else v) for k, v in train_args.items()},
     }
+    if resumed_from:
+        card["resumed_from"] = resumed_from
+        card["profile"] = None  # not known on resume; train_args come from the checkpoint
     report = args.data.parent / "build_report.json"
     if report.exists():
         card["dataset"] = json.loads(report.read_text(encoding="utf-8"))
     (run_dir / "run_card.json").write_text(json.dumps(card, indent=2), encoding="utf-8")
     print(f"\nDone. Weights: {run_dir / 'weights' / 'best.pt'}")
     print("Next: python scripts/training/evaluate.py --candidate", run_dir / "weights" / "best.pt")
-    return 0
 
 
 if __name__ == "__main__":

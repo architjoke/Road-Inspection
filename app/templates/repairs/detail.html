@@ -38,19 +38,39 @@
             <dd class="col-sm-9">{{ repair.evidence_filename or repair.evidence_note or "None yet" }}</dd>
             <dt class="col-sm-3">Payment</dt>
             <dd class="col-sm-9">{{ repair.payment_status or "pending" }}</dd>
+            {% set ver = repair.verification or {} %}
+            <dt class="col-sm-3">Verify SSIM</dt>
+            <dd class="col-sm-9">
+                {% if ver.status %}{{ ver.status }}{% if ver.compared_at %} <span class="text-muted small">({{ ver.compared_at[:16]|replace("T", " ") }})</span>{% endif %}
+                {% else %}Not run yet{% endif %}
+                {% if repair.status not in ["verified", "paid", "closed"] %}
+                · <a href="{{ url_for('protected.repairs_verify', repair_id=repair.id) }}">Open Verify SSIM</a>
+                {% endif %}
+            </dd>
+            <dt class="col-sm-3">Final decision</dt>
+            <dd class="col-sm-9">
+                {% if ver.final_decision %}
+                Verified by {{ ver.final_decision.decided_by_name or ("user #" ~ ver.final_decision.decided_by) }}
+                on {{ (ver.final_decision.decided_at or "")[:16]|replace("T", " ") }}
+                · {{ "followed the SSIM recommendation" if ver.final_decision.followed_ssim else "overrode SSIM" }}
+                {% if ver.final_decision.note %}<div class="small text-muted">“{{ ver.final_decision.note }}”</div>{% endif %}
+                {% else %}Pending — made by a municipal or super admin on the Verify SSIM page{% endif %}
+            </dd>
         </dl>
     </div>
 </div>
 
 <div class="content-card">
-    <div class="content-card-header"><div><h2>Update job</h2><p>Assign contractor, verify status, and mark payment.</p></div></div>
+    <div class="content-card-header"><div><h2>Update job</h2><p>Assign contractor and track status. Verification happens on Verify SSIM; payment and closing unlock after it.</p></div></div>
     <form method="POST" class="p-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label" for="status">Status</label>
                 <select class="form-select" id="status" name="status">
-                    {% for value in ["open", "assigned", "in_progress", "evidence_uploaded", "verified", "paid", "closed", "rejected"] %}
+                    {% set done = repair.status in ["verified", "paid", "closed"] %}
+                    {% for value in ["open", "assigned", "in_progress", "evidence_uploaded", "verified", "paid", "closed", "rejected"]
+                       if (value not in ["verified", "paid", "closed"]) or done %}
                     <option value="{{ value }}" {% if repair.status == value %}selected{% endif %}>{{ value.replace('_', ' ') }}</option>
                     {% endfor %}
                 </select>
@@ -70,7 +90,7 @@
             <div class="col-md-4">
                 <label class="form-label" for="payment_status">Payment</label>
                 <select class="form-select" id="payment_status" name="payment_status">
-                    {% for value in ["pending", "paid"] %}
+                    {% for value in (["pending", "paid"] if repair.status in ["verified", "paid", "closed"] else ["pending"]) %}
                     <option value="{{ value }}" {% if (repair.payment_status or 'pending') == value %}selected{% endif %}>{{ value }}</option>
                     {% endfor %}
                 </select>

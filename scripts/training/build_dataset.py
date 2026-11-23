@@ -24,6 +24,11 @@ What it does
 Validation is always the untouched RDD India val split, so runs stay comparable
 with the current production model.
 
+``--fold-test`` (final production model): the RDD India *test* split joins
+train (~+23 % labelled damage). Val still picks the checkpoint and tunes the
+thresholds, but there is no untouched test score any more — data.yaml then has
+no ``test`` entry and evaluate.py reports val only.
+
 Optional pretraining set (``--pretrain-src``)
 --------------------------------------------
 India has only ~2.2k damaged training images. ``--pretrain-src <RDD_SPLIT>``
@@ -177,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="RDD_SPLIT folder (all countries) to build an optional pretraining set")
     ap.add_argument("--pretrain-exclude", nargs="*", default=["India_", "China_Drone"],
                     help="filename prefixes left out of the pretraining set")
+    ap.add_argument("--fold-test", action="store_true",
+                    help="train on the RDD India test split too (no held-out test score afterwards)")
     ap.add_argument("--dry-run", action="store_true", help="print stats only, write nothing")
     args = ap.parse_args(argv)
 
@@ -219,6 +226,11 @@ def main(argv: list[str] | None = None) -> int:
             splits["train"] += got["train"]
             local_val += got["val"] + got["test"]
             extra_sources.append(folder.name)
+
+    if args.fold_test:
+        stats["test_images_folded_into_train"] = len(splits["test"])
+        splits["train"] += splits["test"]
+        splits["test"] = []
 
     # 3. De-duplicate + leakage removal (val/test are authoritative)
     held_out = {it["hash"] for s in ("val", "test") for it in splits[s]}
@@ -278,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         "bg_frac": args.bg_frac,
         "cleaning": dict(stats),
         "seed": args.seed,
+        "fold_test": bool(args.fold_test),
     }
     print(json.dumps(report, indent=2))
     if args.dry_run:
@@ -287,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:
     out = args.out.resolve()
     groups = {"train": train, "val": splits["val"], "test": splits["test"], "local_val": local_val}
     for split, items in groups.items():
+        if not items and split != "train":
+            continue  # no empty split folders (Ultralytics rejects an empty test/val dir)
         img_dir, lbl_dir = out / split / "images", out / split / "labels"
         img_dir.mkdir(parents=True, exist_ok=True)
         lbl_dir.mkdir(parents=True, exist_ok=True)
@@ -307,9 +322,10 @@ def main(argv: list[str] | None = None) -> int:
     import yaml
 
     base = {"path": out.as_posix(), "names": CLASS_NAMES, "nc": len(CLASS_NAMES)}
-    (out / "data.yaml").write_text(
-        yaml.safe_dump({**base, "train": "train.txt", "val": "val/images", "test": "test/images"},
-                       sort_keys=False), encoding="utf-8")
+    main_yaml = {**base, "train": "train.txt", "val": "val/images"}
+    if splits["test"]:
+        main_yaml["test"] = "test/images"
+    (out / "data.yaml").write_text(yaml.safe_dump(main_yaml, sort_keys=False), encoding="utf-8")
     if local_val:
         (out / "local_val.yaml").write_text(
             yaml.safe_dump({**base, "train": "train.txt", "val": "local_val/images"},

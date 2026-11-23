@@ -96,6 +96,49 @@ def normalize_detections(
     return normalized
 
 
+def suppress_nested_duplicates(
+    detections: list[dict[str, Any]], min_overlap: float | None = None
+) -> list[dict[str, Any]]:
+    """Drop a box that mostly lies inside a stronger box of the same class.
+
+    YOLO's NMS compares boxes by IoU, so a small box nested in a large one (or a
+    large low-confidence box around a confident one) survives and the same damage
+    is reported — and costed — twice. Overlap here is intersection / smaller box
+    area. ``YOLO_NESTED_OVERLAP`` (default 0.6; 0 disables) tunes it.
+    """
+    import os
+
+    if min_overlap is None:
+        raw = os.getenv("YOLO_NESTED_OVERLAP", "0.6")
+        try:
+            min_overlap = float(raw)
+        except ValueError:
+            min_overlap = 0.6
+    if min_overlap <= 0 or len(detections) < 2:
+        return detections
+
+    def area(b):
+        return max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+
+    kept: list[dict[str, Any]] = []
+    for det in sorted(detections, key=lambda d: float(d.get("confidence") or 0), reverse=True):
+        box = det["bbox_xyxy"]
+        duplicate = False
+        for other in kept:
+            if other["class_id"] != det["class_id"]:
+                continue
+            ob = other["bbox_xyxy"]
+            iw = max(0.0, min(box[2], ob[2]) - max(box[0], ob[0]))
+            ih = max(0.0, min(box[3], ob[3]) - max(box[1], ob[1]))
+            smaller = min(area(box), area(ob))
+            if smaller > 0 and iw * ih / smaller >= min_overlap:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(det)
+    return kept
+
+
 def run_inference(
     image_path: str | Path,
     *,
@@ -183,14 +226,16 @@ def run_inference(
             }
         )
 
-    return normalize_detections(
-        raw,
-        width=width,
-        height=height,
-        model_version=model_version,
-        confidence_threshold=conf_thr,
-        frame_number=frame_number,
-        class_thresholds=class_thresholds,
+    return suppress_nested_duplicates(
+        normalize_detections(
+            raw,
+            width=width,
+            height=height,
+            model_version=model_version,
+            confidence_threshold=conf_thr,
+            frame_number=frame_number,
+            class_thresholds=class_thresholds,
+        )
     )
 
 

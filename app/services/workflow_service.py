@@ -156,19 +156,82 @@ def save_after_evidence(repair_id: int, uploaded: FileStorage | None) -> dict[st
         "evidence_filename": safe,
         "evidence_path": str(dest),
         "status": "evidence_uploaded",
+        # A new after photo makes any earlier SSIM result stale: it must be re-run
+        # before an admin can verify (the decision rests on this evidence).
+        "comparison_id": None,
+        "verification": None,
     }
 
 
-def mark_repair_verified(repair_id: int, *, comparison_id: str | None = None) -> dict | None:
-    from app.services.repair_service import update_repair
+# Roles allowed to make the final verification decision. The SSIM comparison only
+# recommends; a person in one of these roles always makes the call.
+FINAL_VERIFIER_ROLES = ("super_admin", "municipal_admin")
+SSIM_RECOMMENDS_VERIFY = "Repair Verified"
+MIN_OVERRIDE_NOTE = 10
 
-    fields: dict[str, Any] = {
-        "status": "verified",
-        "payment_status": "pending",
+
+class VerificationDecisionError(ValueError):
+    """The final verification was refused (no SSIM run yet, or a reason is missing)."""
+
+
+def ssim_recommendation(verification: dict | None) -> str | None:
+    """'verify' when SSIM found a clear repair, 'review' otherwise, None if not run."""
+    if not verification or not verification.get("status"):
+        return None
+    clear = (
+        verification.get("status") == SSIM_RECOMMENDS_VERIFY
+        and not verification.get("manual_review_required")
+    )
+    return "verify" if clear else "review"
+
+
+def mark_repair_verified(
+    repair_id: int,
+    *,
+    decided_by: int | str | None,
+    decided_by_name: str | None = None,
+    note: str | None = None,
+) -> dict | None:
+    """
+    Final, human verification of a repair (status -> verified, payment -> pending).
+
+    Allowed only after Verify SSIM has been run for this repair. If the admin goes
+    against the SSIM recommendation, a written reason is required. The decision is
+    stored together with the SSIM evidence it was based on.
+    """
+    from datetime import datetime
+
+    from app.services.repair_service import get_repair, update_repair
+
+    repair = get_repair(repair_id)
+    if repair is None:
+        return None
+    verification = dict(repair.get("verification") or {})
+    recommendation = ssim_recommendation(verification)
+    if recommendation is None or not repair.get("comparison_id"):
+        raise VerificationDecisionError(
+            "Run Verify SSIM for this repair first; the final decision needs the "
+            "before/after comparison."
+        )
+    note = (note or "").strip()
+    if recommendation != "verify" and len(note) < MIN_OVERRIDE_NOTE:
+        raise VerificationDecisionError(
+            f"SSIM did not recommend verification ({verification.get('status')}). "
+            f"Give a reason of at least {MIN_OVERRIDE_NOTE} characters to verify anyway."
+        )
+    verification["final_decision"] = {
+        "decision": "verified",
+        "decided_by": decided_by,
+        "decided_by_name": decided_by_name,
+        "decided_at": datetime.utcnow().isoformat() + "Z",
+        "note": note or None,
+        "ssim_recommendation": recommendation,
+        "followed_ssim": recommendation == "verify",
+        "comparison_id": repair.get("comparison_id"),
     }
-    if comparison_id:
-        fields["comparison_id"] = comparison_id
-    return update_repair(repair_id, **fields)
+    return update_repair(
+        repair_id, status="verified", payment_status="pending", verification=verification
+    )
 
 
 def auto_create_repairs_from_detections(

@@ -54,6 +54,7 @@ class OfflineInspection:
     weather_conditions: str | None = None
     lighting_conditions: str | None = None
     total_detections: int = 0
+    estimated_total_cost: float | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     media_items: list[OfflineMedia] = field(default_factory=list)
